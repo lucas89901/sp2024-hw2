@@ -1,14 +1,14 @@
 #define _GNU_SOURCE
 #include <errno.h>
 #include <fcntl.h>
-#include <unistd.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdbool.h>
 #include <string.h>
 #include <sys/stat.h>
-#include <sys/wait.h>
 #include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
 
 #include "hw2.h"
 
@@ -21,12 +21,12 @@ please remember :
     0.1 Fully understand course materials
     0.2 Read the spec thoroughly, including frequently updated FAQ section
     0.3 Use online resources
-    0.4 Ask your friends while avoiding plagiarism, they might be able to understand you better, since the TAs know the solution, 
+    0.4 Ask your friends while avoiding plagiarism, they might be able to understand you better, since the TAs know the solution,
         they might not understand what you're trying to do as quickly as someone who is also doing this homework.
 1. be respectful
 2. the quality of your question will directly impact the value of the response you get.
 3. think about what you want from your question, what is the response you expect to get
-4. what do you want the TA to help you with. 
+4. what do you want the TA to help you with.
     4.0 Unrelated to Homework (wsl, workstation, systems configuration)
     4.1 Debug
     4.2 Logic evaluation (we may answer doable yes or no, but not always correct or incorrect, as it might be giving out the solution)
@@ -38,11 +38,11 @@ please remember :
 */
 
 // somethings I recommend leaving here, but you may delete as you please
-static char root[MAX_FRIEND_INFO_LEN] = "Not_Tako";     // root of tree
-static char friend_info[MAX_FRIEND_INFO_LEN];   // current process info
-static char friend_name[MAX_FRIEND_NAME_LEN];   // current process name
-static int friend_value;    // current process value
-FILE* read_fp = NULL;
+static char root[MAX_FRIEND_INFO_LEN] = "Not_Tako";  // root of tree
+static char friend_info[MAX_FRIEND_INFO_LEN];        // current process info
+static char friend_name[MAX_FRIEND_NAME_LEN];        // current process name
+static int friend_value;                             // current process value
+FILE *read_fp = NULL;
 
 // Is Root of tree
 static inline bool is_Not_Tako() {
@@ -62,7 +62,7 @@ void print_fail_meet(char *parent_friend_name, char *child_friend_name) {
     fprintf(stdout, "Not_Tako does not know %s to meet %s\n", parent_friend_name, child_friend_name);
 }
 
-void print_fail_check(char *parent_friend_name){
+void print_fail_check(char *parent_friend_name) {
     fprintf(stdout, "Not_Tako has checked, he doesn't know %s\n", parent_friend_name);
 }
 
@@ -74,15 +74,15 @@ void print_fail_adopt(char *parent_friend_name, char *child_friend_name) {
     fprintf(stdout, "%s is a descendant of %s\n", parent_friend_name, child_friend_name);
 }
 
-void print_compare_gtr(char *friend_name){
+void print_compare_gtr(char *friend_name) {
     fprintf(stdout, "Not_Tako is still friends with %s\n", friend_name);
 }
 
-void print_compare_leq(char *friend_name){
+void print_compare_leq(char *friend_name) {
     fprintf(stdout, "%s is dead to Not_Tako\n", friend_name);
 }
 
-void print_final_graduate(){
+void print_final_graduate() {
     fprintf(stdout, "Congratulations! You've finished Not_Tako's annoying tasks!\n");
 }
 
@@ -105,31 +105,31 @@ please do above 2 functions to save some time
 
 int main(int argc, char *argv[]) {
     // Hi! Welcome to SP Homework 2, I hope you have fun
-    pid_t process_pid = getpid(); // you might need this when using fork()
+    pid_t process_pid = getpid();  // you might need this when using fork()
     if (argc != 2) {
         fprintf(stderr, "Usage: ./friend [friend_info]\n");
         return 0;
     }
-    setvbuf(stdout, NULL, _IONBF, 0); // prevent buffered I/O, equivalent to fflush() after each stdout, study this as you may need to do it for other friends against their parents
-    
+    setvbuf(stdout, NULL, _IONBF, 0);  // prevent buffered I/O, equivalent to fflush() after each stdout, study this as you may need to do it for
+                                       // other friends against their parents
+
     // put argument one into friend_info
     strncpy(friend_info, argv[1], MAX_FRIEND_INFO_LEN);
-    
-    if(strcmp(argv[1], root) == 0){
+
+    if (strcmp(argv[1], root) == 0) {
         // is Not_Tako
-        strncpy(friend_name, friend_info,MAX_FRIEND_NAME_LEN);      // put name into friend_nae
-        friend_name[MAX_FRIEND_NAME_LEN - 1] = '\0';        // in case strcmp messes with you
-        read_fp = stdin;        // takes commands from stdin
-        friend_value = 100;     // Not_Tako adopting nodes will not mod their values
-    }
-    else{
+        strncpy(friend_name, friend_info, MAX_FRIEND_NAME_LEN);  // put name into friend_nae
+        friend_name[MAX_FRIEND_NAME_LEN - 1] = '\0';             // in case strcmp messes with you
+        read_fp = stdin;                                         // takes commands from stdin
+        friend_value = 100;                                      // Not_Tako adopting nodes will not mod their values
+    } else {
         // is other friends
         // extract name and value from info
         // where do you read from?
         // anything else you have to do before you start taking commands?
     }
 
-    //TODO:
+    // TODO:
     /* you may follow SOP if you wish, but it is not guaranteed to consider every possible outcome
 
     1. read from parent/stdin
@@ -192,8 +192,8 @@ int main(int argc, char *argv[]) {
     }
     */
 
-   // final print, please leave this in, it may bepart of the test case output
-    if(is_Not_Tako()){
+    // final print, please leave this in, it may bepart of the test case output
+    if (is_Not_Tako()) {
         print_final_graduate();
     }
     return 0;
