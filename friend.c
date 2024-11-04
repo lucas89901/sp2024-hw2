@@ -12,41 +12,16 @@
 
 #include "hw2.h"
 
-#define ERR_EXIT(s) perror(s), exit(errno);
-
-/*
-If you need help from TAs,
-please remember :
-0. Show your efforts
-    0.1 Fully understand course materials
-    0.2 Read the spec thoroughly, including frequently updated FAQ section
-    0.3 Use online resources
-    0.4 Ask your friends while avoiding plagiarism, they might be able to understand you better, since the TAs know the solution,
-        they might not understand what you're trying to do as quickly as someone who is also doing this homework.
-1. be respectful
-2. the quality of your question will directly impact the value of the response you get.
-3. think about what you want from your question, what is the response you expect to get
-4. what do you want the TA to help you with.
-    4.0 Unrelated to Homework (wsl, workstation, systems configuration)
-    4.1 Debug
-    4.2 Logic evaluation (we may answer doable yes or no, but not always correct or incorrect, as it might be giving out the solution)
-    4.3 Spec details inquiry
-    4.4 Testcase possibility
-5. If the solution to answering your question requires the TA to look at your code, you probably shouldn't ask it.
-6. We CANNOT tell you the answer, but we can tell you how your current effort may approach it.
-7. If you come with nothing, we cannot help you with anything.
-*/
-
 // somethings I recommend leaving here, but you may delete as you please
-static char root[MAX_FRIEND_INFO_LEN] = "Not_Tako";  // root of tree
-static char friend_info[MAX_FRIEND_INFO_LEN];        // current process info
-static char friend_name[MAX_FRIEND_NAME_LEN];        // current process name
-static int friend_value;                             // current process value
+static const char kRootName[MAX_FRIEND_INFO_LEN] = "Not_Tako";  // root of tree
+static char friend_info[MAX_FRIEND_INFO_LEN];                   // current process info
+static char friend_name[MAX_FRIEND_NAME_LEN];                   // current process name
+static int friend_value;                                        // current process value
 FILE *read_fp = NULL;
 
 // Is Root of tree
-static inline bool is_Not_Tako() {
-    return (strcmp(friend_name, root) == 0);
+static inline bool is_root() {
+    return strcmp(friend_name, kRootName) == 0;
 }
 
 // a bunch of prints for you
@@ -110,13 +85,14 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "Usage: ./friend [friend_info]\n");
         return 0;
     }
-    setvbuf(stdout, NULL, _IONBF, 0);  // prevent buffered I/O, equivalent to fflush() after each stdout, study this as you may need to do it for
-                                       // other friends against their parents
+    // prevent buffered I/O, equivalent to fflush() after each stdout, study this as you may need to do it for
+    // other friends against their parents
+    setvbuf(stdout, NULL, _IONBF, 0);
 
     // put argument one into friend_info
     strncpy(friend_info, argv[1], MAX_FRIEND_INFO_LEN);
 
-    if (strcmp(argv[1], root) == 0) {
+    if (strcmp(argv[1], kRootName) == 0) {
         // is Not_Tako
         strncpy(friend_name, friend_info, MAX_FRIEND_NAME_LEN);  // put name into friend_nae
         friend_name[MAX_FRIEND_NAME_LEN - 1] = '\0';             // in case strcmp messes with you
@@ -193,7 +169,7 @@ int main(int argc, char *argv[]) {
     */
 
     // final print, please leave this in, it may bepart of the test case output
-    if (is_Not_Tako()) {
+    if (is_root()) {
         print_final_graduate();
     }
     return 0;

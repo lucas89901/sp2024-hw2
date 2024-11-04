@@ -1,3 +1,6 @@
+#ifndef HW2_H_
+#define HW2_H_
+
 #include <sys/types.h>
 
 #define PARENT_READ_FD 3
@@ -8,6 +11,8 @@
 #define MAX_FRIEND_NAME_LEN 9
 #define MAX_CMD_LEN 128
 
+#define ERR_EXIT(s) perror(s), exit(errno);
+
 typedef struct {
     pid_t pid;
     int read_fd;
@@ -16,3 +21,5 @@ typedef struct {
     char name[MAX_FRIEND_NAME_LEN];
     int value;
 } Friend;
+
+#endif  // HW2_H_
