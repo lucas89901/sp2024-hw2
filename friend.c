@@ -129,13 +129,15 @@ please do above 2 functions to save some time
 // fd 0: Input from outside
 // fd 1: Output to outside
 // fd 2: Output to outside (debug messages)
-// fd 3-: Children I/O
+// fd 3: /dev/null
+// fd 4-: Children I/O
 //
 // For child:
 // fd 0: Input from parent
-// fd 1: Output to parent
+// fd 1: Output to outside
 // fd 2: Output to outside (debug messages)
-// fd 3-: Children I/O
+// fd 3: Output to parent
+// fd 4-: Children I/O
 
 void HandleMeet() {
     char parent_name[MAX_FRIEND_NAME_LEN], new_child_info[MAX_FRIEND_INFO_LEN];
@@ -169,6 +171,7 @@ void HandleMeet() {
         if (is_root) {
             print_direct_meet(child->name);
         } else {
+            print_indirect_meet(parent_name, new_child_name);
             fprintf(parent_write_stream, "%d\n", RESPONSE_OK);
         }
         return;
@@ -183,9 +186,7 @@ void HandleMeet() {
         fscanf(children[i].read_stream, "%d", &res);
         LOG("response=%d", res);
         if (res == RESPONSE_OK) {
-            if (is_root) {
-                print_indirect_meet(parent_name, new_child_name);
-            } else {
+            if (!is_root) {
                 fprintf(parent_write_stream, "%d\n", RESPONSE_OK);
             }
             return;

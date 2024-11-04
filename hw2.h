@@ -6,8 +6,8 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#define PARENT_READ_FD STDIN_FILENO    // File descriptor for reading from parent
-#define PARENT_WRITE_FD STDOUT_FILENO  // File descriptor for writing to parent
+#define PARENT_READ_FD STDIN_FILENO  // File descriptor for reading from parent
+#define PARENT_WRITE_FD 3            // File descriptor for writing to parent
 
 #define MAX_CHILDREN 8
 #define MAX_FIFO_NAME_LEN 9
