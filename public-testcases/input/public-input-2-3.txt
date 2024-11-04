@@ -26,5 +26,5 @@ Meet Pi Rho_80
 Meet Sigma Tau_01
 Check Delta
 Meet Not_Tako Omega_02
-Meet Beta Kappa_33
 Check Iota
+Check Xi

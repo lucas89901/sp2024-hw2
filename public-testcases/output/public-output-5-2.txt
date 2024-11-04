@@ -34,7 +34,7 @@ Not_Tako has met Happy through Not
 Tired has adopted AF
 Tired_18
 Not_18 AF_11
-Happy_23 Me_02
+Happy_23
 Not_Tako has met Some by himself
 Not_Tako has met Where by himself
 Not_Tako has met Over by himself
@@ -53,6 +53,8 @@ Not_Tako has adopted Over
 Where has adopted Rainbow
 The has adopted Skies
 Not_Tako has adopted The
+The has adopted Are
+The has adopted Blue
 Not_Tako has met N by himself
 Not_Tako has met i by himself
 Not_Tako has met n by himself
@@ -63,9 +65,9 @@ Over has adopted The
 Some_47
 Where_12
 Rainbow_10
-Are_02 Over_03
+Over_03
 The_01
-Blue_00 Skies_02
+Skies_02 Are_02 Blue_00
 Not_Tako does not know Meet to meet MAE
 Not_Tako has met INA through o
 Not_Tako has met Nis through i

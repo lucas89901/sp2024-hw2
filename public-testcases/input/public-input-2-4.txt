@@ -15,7 +15,6 @@ Check Beta
 Meet Kappa Lambda_20
 Meet Lambda Mu_30
 Check Not_Tako
-Meet Not_Tako Mu_30
 Meet Mu Nu_40
 Meet Nu Xi_50
 Check Omicron
@@ -30,5 +29,4 @@ Meet Omicron Pi_70
 Meet Sigma Tau_01
 Check Delta
 Meet Not_Tako Omega_02
-Meet Beta Kappa_33
 Check Iota
