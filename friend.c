@@ -14,14 +14,61 @@
 
 // somethings I recommend leaving here, but you may delete as you please
 static const char kRootName[MAX_FRIEND_INFO_LEN] = "Not_Tako";  // root of tree
-static char friend_info[MAX_FRIEND_INFO_LEN];                   // current process info
-static char friend_name[MAX_FRIEND_NAME_LEN];                   // current process name
-static int friend_value;                                        // current process value
-FILE *read_fp = NULL;
+static char current_info[MAX_FRIEND_INFO_LEN];                  // current process info
+static char current_name[MAX_FRIEND_NAME_LEN];                  // current process name
+static int current_value = 100;                                 // current process value
+static bool is_root = false;
+Friend children[MAX_CHILDREN];
+int children_size = 0;
+FILE *parent_write_stream = NULL;
+pid_t pid;
+// char argv0_realpath[256];
 
-// Is Root of tree
-static inline bool is_root() {
-    return strcmp(friend_name, kRootName) == 0;
+void SplitInfo(const char *const info, char *const name, int *const value) {
+    char *sep = strchr(info, '_');
+    CHECK(sep != NULL);
+    *sep = '\0';
+    if (name != NULL) {
+        strncpy(name, info, MAX_FRIEND_NAME_LEN);
+    }
+    if (value != NULL) {
+        sscanf(sep + 1, "%d", value);
+    }
+    *sep = '_';
+}
+
+void InitializeFriend(Friend *const friend) {
+    friend->pid = -1;
+    friend->read_fd = -1;
+    friend->read_stream = NULL;
+    friend->write_fd = -1;
+    friend->write_stream = NULL;
+    memset(friend->info, MAX_FRIEND_INFO_LEN, 0);
+    memset(friend->name, MAX_FRIEND_NAME_LEN, 0);
+    friend->value = -1;
+}
+
+void SetFriend(Friend *const friend, pid_t pid, int read_fd, int write_fd, const char *const info) {
+    LOG("SetFriend; pid=%d, read_fd=%d, write_fd=%d, info=%s", pid, read_fd, write_fd, info);
+
+    friend->pid = pid;
+
+    friend->read_fd = read_fd;
+    friend->read_stream = fdopen(read_fd, "r");
+    if (!friend->read_stream) {
+        ERR_EXIT("fdopen");
+    }
+    setvbuf(friend->read_stream, NULL, _IONBF, 0);
+
+    friend->write_fd = write_fd;
+    friend->write_stream = fdopen(write_fd, "w");
+    if (!friend->write_stream) {
+        ERR_EXIT("fdopen");
+    }
+    setvbuf(friend->write_stream, NULL, _IONBF, 0);
+
+    strncpy(friend->info, info, MAX_FRIEND_INFO_LEN);
+    SplitInfo(friend->info, friend->name, &friend->value);
 }
 
 // a bunch of prints for you
@@ -78,9 +125,93 @@ void fully_read(int read_fd, void *read_buf, int read_len);
 please do above 2 functions to save some time
 */
 
+// For root:
+// fd 0: Input from outside
+// fd 1: Output to outside
+// fd 2: Output to outside (debug messages)
+// fd 3-: Children I/O
+//
+// For child:
+// fd 0: Input from parent
+// fd 1: Output to parent
+// fd 2: Output to outside (debug messages)
+// fd 3-: Children I/O
+
+void HandleMeet() {
+    char parent_name[MAX_FRIEND_NAME_LEN], new_child_info[MAX_FRIEND_INFO_LEN];
+    scanf("%s %s", parent_name, new_child_info);
+    LOG("Meet %s %s", parent_name, new_child_info);
+    char new_child_name[MAX_FRIEND_NAME_LEN];
+    SplitInfo(new_child_info, new_child_name, NULL);
+
+    if (strncmp(parent_name, current_name, MAX_FRIEND_NAME_LEN) == 0) {
+        int pipefds_to_child[2], pipefds_from_child[2];
+        pipe2(pipefds_to_child, O_CLOEXEC);
+        pipe2(pipefds_from_child, O_CLOEXEC);
+        pid_t pid = fork();
+        if (pid < 0) {
+            ERR_EXIT("fork");
+        } else if (pid == 0) {
+            dup2(pipefds_to_child[0], PARENT_READ_FD);
+            dup2(pipefds_from_child[1], PARENT_WRITE_FD);
+            for (int i = 0; i < 2; ++i) {
+                close(pipefds_to_child[i]);
+                close(pipefds_from_child[i]);
+            }
+            execl("./friend", "./friend", new_child_info, NULL);
+        }
+
+        // Parent
+        close(pipefds_to_child[0]);
+        close(pipefds_from_child[1]);
+        Friend *child = &children[children_size++];
+        SetFriend(child, pid, pipefds_from_child[0], pipefds_to_child[1], new_child_info);
+        if (is_root) {
+            print_direct_meet(child->name);
+        } else {
+            fprintf(parent_write_stream, "%d\n", RESPONSE_OK);
+        }
+        return;
+    }
+
+    // Recursively search in children.
+    for (int i = 0; i < children_size; ++i) {
+        Friend *child = &children[i];
+        LOG("Recursing into children %d (pid=%d, info=%s)", i, child->pid, child->info);
+        fprintf(children[i].write_stream, "Meet %s %s\n", parent_name, new_child_info);
+        int res = -1;
+        fscanf(children[i].read_stream, "%d", &res);
+        LOG("response=%d", res);
+        if (res == RESPONSE_OK) {
+            if (is_root) {
+                print_indirect_meet(parent_name, new_child_name);
+            } else {
+                fprintf(parent_write_stream, "%d\n", RESPONSE_OK);
+            }
+            return;
+        }
+    }
+    if (is_root) {
+        print_fail_meet(parent_name, new_child_name);
+    } else {
+        fprintf(parent_write_stream, "%d\n", RESPONSE_NOT_FOUND);
+    }
+}
+
+void HandleCheck() {
+}
+
+void HandleGraduate() {
+}
+void HandleAdopt() {
+}
+
 int main(int argc, char *argv[]) {
     // Hi! Welcome to SP Homework 2, I hope you have fun
-    pid_t process_pid = getpid();  // you might need this when using fork()
+    pid = getpid();  // you might need this when using fork()
+    // if (realpath(argv[0], argv0_realpath) < 0) {
+    //     ERR_EXIT("realpath");
+    // }
     if (argc != 2) {
         fprintf(stderr, "Usage: ./friend [friend_info]\n");
         return 0;
@@ -89,20 +220,43 @@ int main(int argc, char *argv[]) {
     // other friends against their parents
     setvbuf(stdout, NULL, _IONBF, 0);
 
-    // put argument one into friend_info
-    strncpy(friend_info, argv[1], MAX_FRIEND_INFO_LEN);
+    for (int i = 0; i < MAX_CHILDREN; ++i) {
+        InitializeFriend(&children[i]);
+    }
 
+    strncpy(current_info, argv[1], MAX_FRIEND_INFO_LEN);
     if (strcmp(argv[1], kRootName) == 0) {
-        // is Not_Tako
-        strncpy(friend_name, friend_info, MAX_FRIEND_NAME_LEN);  // put name into friend_nae
-        friend_name[MAX_FRIEND_NAME_LEN - 1] = '\0';             // in case strcmp messes with you
-        read_fp = stdin;                                         // takes commands from stdin
-        friend_value = 100;                                      // Not_Tako adopting nodes will not mod their values
+        strncpy(current_name, current_info, MAX_FRIEND_NAME_LEN);
+        current_name[MAX_FRIEND_NAME_LEN - 1] = '\0';
+        current_value = 100;
+        is_root = true;
+        int fd = open("/dev/null", O_WRONLY | O_CLOEXEC);
+        CHECK(fd == 3);
     } else {
-        // is other friends
-        // extract name and value from info
-        // where do you read from?
-        // anything else you have to do before you start taking commands?
+        SplitInfo(current_info, current_name, &current_value);
+        is_root = false;
+        parent_write_stream = fdopen(PARENT_WRITE_FD, "w");
+        setvbuf(parent_write_stream, NULL, _IONBF, 0);
+    }
+    LOG("Init done; current_name=%s, current_value=%d", current_name, current_value);
+
+    char cmd[MAX_CMD_LEN];
+    while (scanf("%s", cmd) != EOF) {
+        LOG("%s got command: %s", current_info, cmd);
+        switch (cmd[0]) {
+            case 'M':
+                HandleMeet();
+                break;
+            case 'C':
+                HandleCheck();
+                break;
+            case 'G':
+                HandleGraduate();
+                break;
+            case 'A':
+                HandleAdopt();
+                break;
+        }
     }
 
     // TODO:
@@ -169,7 +323,8 @@ int main(int argc, char *argv[]) {
     */
 
     // final print, please leave this in, it may bepart of the test case output
-    if (is_root()) {
+    if (is_root) {
+        // sleep(10000);
         print_final_graduate();
     }
     return 0;
