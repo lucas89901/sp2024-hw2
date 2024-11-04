@@ -1,5 +1,6 @@
 all: friend
+.PHONY: all clean
 friend: friend.c hw2.h
-	// compile your friend
+	gcc -o friend friend.c
 clean:
-	// remove any executable or unnecessary file according to submit format
+	rm -rf friend
