@@ -1,2 +1,8 @@
-friend
-*.o
+*
+!public-testcases
+!sample-testcases
+!friend.c
+!hw2.h
+!Makefile
+!.gitignore
+!README.md
