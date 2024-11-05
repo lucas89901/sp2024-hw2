@@ -142,7 +142,7 @@ please do above 2 functions to save some time
 void HandleMeet() {
     char parent_name[MAX_FRIEND_NAME_LEN], new_child_info[MAX_FRIEND_INFO_LEN];
     scanf("%s %s", parent_name, new_child_info);
-    LOG("Meet %s %s", parent_name, new_child_info);
+    LOG("Meet parameters: parent_name=%s, new_child_info=%s", parent_name, new_child_info);
     char new_child_name[MAX_FRIEND_NAME_LEN];
     SplitInfo(new_child_info, new_child_name, NULL);
 
@@ -181,10 +181,10 @@ void HandleMeet() {
     for (int i = 0; i < children_size; ++i) {
         Friend *child = &children[i];
         LOG("Recursing into children %d (pid=%d, info=%s)", i, child->pid, child->info);
-        fprintf(children[i].write_stream, "Meet %s %s\n", parent_name, new_child_info);
+        fprintf(child->write_stream, "Meet %s %s\n", parent_name, new_child_info);
         int res = -1;
-        fscanf(children[i].read_stream, "%d", &res);
-        LOG("response=%d", res);
+        fscanf(child->read_stream, "%d", &res);
+        LOG("Meet response=%d", res);
         if (res == RESPONSE_OK) {
             if (!is_root) {
                 fprintf(parent_write_stream, "%d\n", RESPONSE_OK);
@@ -199,7 +199,85 @@ void HandleMeet() {
     }
 }
 
+// Only called in nodes other than root.
+void HandleLevelPrint() {
+    int level;  // level >= 0
+    int has_printed;
+    scanf("%d %d", &level, &has_printed);
+    // LOG("LevelPrint parameters: level=%d", level);
+    if (level == 0) {
+        if (has_printed) {
+            printf(" ");
+        }
+        printf("%s", current_info);
+        fprintf(parent_write_stream, "%d\n", RESPONSE_OK);
+        return;
+    }
+
+    for (int i = 0; i < children_size; ++i) {
+        fprintf(children[i].write_stream, "L %d %d\n", level - 1, has_printed);
+        int res;
+        fscanf(children[i].read_stream, "%d", &res);
+        if (res == RESPONSE_OK) {
+            has_printed = 1;
+        }
+    }
+    int res;
+    if (has_printed) {
+        res = RESPONSE_OK;
+    } else {
+        res = RESPONSE_NO_PRINT;
+    }
+    fprintf(parent_write_stream, "%d\n", res);
+}
+
 void HandleCheck() {
+    char parent_name[MAX_FRIEND_NAME_LEN];
+    scanf("%s", parent_name);
+    LOG("Check parameters: parent_name=%s", parent_name);
+
+    if (strncmp(parent_name, current_name, MAX_FRIEND_NAME_LEN) == 0) {
+        printf("%s\n", current_info);
+        for (int level = 0; level < MAX_TREE_DEPTH; ++level) {  // IDDFS.
+            int has_printed = 0;
+            for (int i = 0; i < children_size; ++i) {
+                fprintf(children[i].write_stream, "L %d %d\n", level, has_printed);
+                int res;
+                fscanf(children[i].read_stream, "%d", &res);
+                if (res == RESPONSE_OK) {
+                    has_printed = 1;
+                }
+            }
+            if (has_printed) {
+                printf("\n");
+            }
+        }
+        if (!is_root) {
+            fprintf(parent_write_stream, "%d\n", RESPONSE_OK);
+        }
+        return;
+    }
+
+    // DFS for target parent.
+    for (int i = 0; i < children_size; ++i) {
+        Friend *child = &children[i];
+        LOG("Recursing into children %d (pid=%d, info=%s)", i, child->pid, child->info);
+        fprintf(child->write_stream, "Check %s\n", parent_name);
+        int res = -1;
+        fscanf(child->read_stream, "%d", &res);
+        LOG("Check response=%d", res);
+        if (res == RESPONSE_OK) {
+            if (!is_root) {
+                fprintf(parent_write_stream, "%d\n", RESPONSE_OK);
+            }
+            return;
+        }
+    }
+    if (is_root) {
+        print_fail_check(parent_name);
+    } else {
+        fprintf(parent_write_stream, "%d\n", RESPONSE_NOT_FOUND);
+    }
 }
 
 void HandleGraduate() {
@@ -256,6 +334,9 @@ int main(int argc, char *argv[]) {
                 break;
             case 'A':
                 HandleAdopt();
+                break;
+            case 'L':
+                HandleLevelPrint();
                 break;
         }
     }

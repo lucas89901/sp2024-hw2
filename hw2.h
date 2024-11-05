@@ -14,6 +14,7 @@
 #define MAX_FRIEND_INFO_LEN 12
 #define MAX_FRIEND_NAME_LEN 9
 #define MAX_CMD_LEN 128
+#define MAX_TREE_DEPTH 7  // Root: depth 0
 
 #define ERR_EXIT(s) perror(s), exit(errno);
 
@@ -41,5 +42,6 @@ typedef struct {
 
 #define RESPONSE_OK 0
 #define RESPONSE_NOT_FOUND 1
+#define RESPONSE_NO_PRINT 2  // No nodes have been printed.
 
 #endif  // HW2_H_
