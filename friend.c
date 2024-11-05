@@ -161,14 +161,11 @@ int Send(const Friend *const friend, const char *fmt, ...) {
     return res;
 }
 
-void HandleMeet() {
-    char parent_name[MAX_FRIEND_NAME_LEN], new_child_info[MAX_FRIEND_INFO_LEN];
-    scanf("%s %s", parent_name, new_child_info);
-    LOG("Meet parameters: parent_name=%s, new_child_info=%s", parent_name, new_child_info);
-    char new_child_name[MAX_FRIEND_NAME_LEN];
-    SplitInfo(new_child_info, new_child_name, NULL);
+void HandleMeet(const char *const parent_friend_name, const char *const child_friend_info) {
+    char child_friend_name[MAX_FRIEND_NAME_LEN];
+    SplitInfo(child_friend_info, child_friend_name, NULL);
 
-    if (strncmp(parent_name, current_name, MAX_FRIEND_NAME_LEN) == 0) {
+    if (strncmp(parent_friend_name, current_name, MAX_FRIEND_NAME_LEN) == 0) {
         int pipefds_to_child[2], pipefds_from_child[2];
         pipe2(pipefds_to_child, O_CLOEXEC);
         pipe2(pipefds_from_child, O_CLOEXEC);
@@ -182,18 +179,18 @@ void HandleMeet() {
                 close(pipefds_to_child[i]);
                 close(pipefds_from_child[i]);
             }
-            execl("./friend", "./friend", new_child_info, NULL);
+            execl("./friend", "./friend", child_friend_info, NULL);
         }
 
         // Parent
         close(pipefds_to_child[0]);
         close(pipefds_from_child[1]);
         Friend *child = &children[children_size++];
-        SetFriend(child, pid, pipefds_from_child[0], pipefds_to_child[1], new_child_info);
+        SetFriend(child, pid, pipefds_from_child[0], pipefds_to_child[1], child_friend_info);
         if (is_root) {
             print_direct_meet(child->name);
         } else {
-            print_indirect_meet(parent_name, new_child_name);
+            print_indirect_meet(parent_friend_name, child_friend_name);
             fprintf(parent_write_stream, "%d\n", RESPONSE_OK);
         }
         return;
@@ -201,7 +198,7 @@ void HandleMeet() {
 
     // DFS search for the target parent in children.
     for (int i = 0; i < children_size; ++i) {
-        int res = Send(&children[i], "Meet %s %s\n", parent_name, new_child_info);
+        int res = Send(&children[i], "Meet %s %s\n", parent_friend_name, child_friend_info);
         if (res == RESPONSE_OK) {
             if (!is_root) {
                 fprintf(parent_write_stream, "%d\n", RESPONSE_OK);
@@ -210,7 +207,7 @@ void HandleMeet() {
         }
     }
     if (is_root) {
-        print_fail_meet(parent_name, new_child_name);
+        print_fail_meet(parent_friend_name, child_friend_name);
     } else {
         fprintf(parent_write_stream, "%d\n", RESPONSE_NOT_FOUND);
     }
@@ -246,12 +243,8 @@ void HandleLevelPrint() {
     fprintf(parent_write_stream, "%d\n", res);
 }
 
-void HandleCheck() {
-    char parent_name[MAX_FRIEND_NAME_LEN];
-    scanf("%s", parent_name);
-    LOG("Check parameters: parent_name=%s", parent_name);
-
-    if (strncmp(parent_name, current_name, MAX_FRIEND_NAME_LEN) == 0) {
+void HandleCheck(const char *const parent_friend_name) {
+    if (strncmp(parent_friend_name, current_name, MAX_FRIEND_NAME_LEN) == 0) {
         printf("%s\n", current_info);
         for (int level = 0; level < MAX_TREE_DEPTH; ++level) {  // IDDFS.
             int has_printed = 0;
@@ -273,7 +266,7 @@ void HandleCheck() {
 
     // DFS for target parent.
     for (int i = 0; i < children_size; ++i) {
-        int res = Send(&children[i], "Check %s\n", parent_name);
+        int res = Send(&children[i], "Check %s\n", parent_friend_name);
         if (res == RESPONSE_OK) {
             if (!is_root) {
                 fprintf(parent_write_stream, "%d\n", RESPONSE_OK);
@@ -282,14 +275,15 @@ void HandleCheck() {
         }
     }
     if (is_root) {
-        print_fail_check(parent_name);
+        print_fail_check(parent_friend_name);
     } else {
         fprintf(parent_write_stream, "%d\n", RESPONSE_NOT_FOUND);
     }
 }
 
-void HandleGraduate() {
+void HandleGraduate(const char *const friend_name) {
 }
+
 void HandleAdopt() {
 }
 
@@ -331,21 +325,32 @@ int main(int argc, char *argv[]) {
     while (scanf("%s", cmd) != EOF) {
         LOG("%s got command: %s", current_info, cmd);
         switch (cmd[0]) {
-            case 'M':
-                HandleMeet();
+            case 'M': {
+                char parent_friend_name[MAX_FRIEND_NAME_LEN], child_friend_info[MAX_FRIEND_INFO_LEN];
+                scanf("%s %s", parent_friend_name, child_friend_info);
+                HandleMeet(parent_friend_name, child_friend_info);
                 break;
-            case 'C':
-                HandleCheck();
+            }
+            case 'C': {
+                char parent_friend_name[MAX_FRIEND_NAME_LEN];
+                scanf("%s", parent_friend_name);
+                HandleCheck(parent_friend_name);
                 break;
-            case 'G':
-                HandleGraduate();
+            }
+            case 'G': {
+                char friend_name[MAX_FRIEND_NAME_LEN];
+                scanf("%s", friend_name);
+                HandleGraduate(friend_name);
                 break;
-            case 'A':
+            }
+            case 'A': {
                 HandleAdopt();
                 break;
-            case 'L':
+            }
+            case 'L': {
                 HandleLevelPrint();
                 break;
+            }
         }
     }
 
