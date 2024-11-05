@@ -1,6 +1,7 @@
 #define _GNU_SOURCE
 #include <errno.h>
 #include <fcntl.h>
+#include <stdarg.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -139,6 +140,27 @@ please do above 2 functions to save some time
 // fd 3: Output to parent
 // fd 4-: Children I/O
 
+// Send message to `friend` and wait for response. Returns the response.
+int Send(const Friend *const friend, const char *fmt, ...) {
+    if (strchr(fmt, '\n') == NULL) {
+        LOG("WARNING: format string %s does not contain newline", fmt);
+    }
+
+    va_list args;
+    va_start(args, fmt);
+    if (vfprintf(friend->write_stream, fmt, args) < 0) {
+        ERR_EXIT("fprintf");
+    }
+    va_end(args);
+
+    int res = -1;
+    if (fscanf(friend->read_stream, "%d", &res) == EOF) {
+        ERR_EXIT("fscanf");
+    }
+    LOG("Response from %d(%s): %d", friend->pid, friend->info, res);
+    return res;
+}
+
 void HandleMeet() {
     char parent_name[MAX_FRIEND_NAME_LEN], new_child_info[MAX_FRIEND_INFO_LEN];
     scanf("%s %s", parent_name, new_child_info);
@@ -177,14 +199,9 @@ void HandleMeet() {
         return;
     }
 
-    // Recursively search in children.
+    // DFS search for the target parent in children.
     for (int i = 0; i < children_size; ++i) {
-        Friend *child = &children[i];
-        LOG("Recursing into children %d (pid=%d, info=%s)", i, child->pid, child->info);
-        fprintf(child->write_stream, "Meet %s %s\n", parent_name, new_child_info);
-        int res = -1;
-        fscanf(child->read_stream, "%d", &res);
-        LOG("Meet response=%d", res);
+        int res = Send(&children[i], "Meet %s %s\n", parent_name, new_child_info);
         if (res == RESPONSE_OK) {
             if (!is_root) {
                 fprintf(parent_write_stream, "%d\n", RESPONSE_OK);
@@ -215,9 +232,7 @@ void HandleLevelPrint() {
     }
 
     for (int i = 0; i < children_size; ++i) {
-        fprintf(children[i].write_stream, "L %d %d\n", level - 1, has_printed);
-        int res;
-        fscanf(children[i].read_stream, "%d", &res);
+        int res = Send(&children[i], "L %d %d\n", level - 1, has_printed);
         if (res == RESPONSE_OK) {
             has_printed = 1;
         }
@@ -241,9 +256,7 @@ void HandleCheck() {
         for (int level = 0; level < MAX_TREE_DEPTH; ++level) {  // IDDFS.
             int has_printed = 0;
             for (int i = 0; i < children_size; ++i) {
-                fprintf(children[i].write_stream, "L %d %d\n", level, has_printed);
-                int res;
-                fscanf(children[i].read_stream, "%d", &res);
+                int res = Send(&children[i], "L %d %d\n", level, has_printed);
                 if (res == RESPONSE_OK) {
                     has_printed = 1;
                 }
@@ -260,12 +273,7 @@ void HandleCheck() {
 
     // DFS for target parent.
     for (int i = 0; i < children_size; ++i) {
-        Friend *child = &children[i];
-        LOG("Recursing into children %d (pid=%d, info=%s)", i, child->pid, child->info);
-        fprintf(child->write_stream, "Check %s\n", parent_name);
-        int res = -1;
-        fscanf(child->read_stream, "%d", &res);
-        LOG("Check response=%d", res);
+        int res = Send(&children[i], "Check %s\n", parent_name);
         if (res == RESPONSE_OK) {
             if (!is_root) {
                 fprintf(parent_write_stream, "%d\n", RESPONSE_OK);
