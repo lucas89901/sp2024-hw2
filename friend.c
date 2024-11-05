@@ -50,7 +50,7 @@ void InitializeFriend(Friend *const friend) {
 }
 
 void SetFriend(Friend *const friend, pid_t pid, int read_fd, int write_fd, const char *const info) {
-    LOG("SetFriend; pid=%d, read_fd=%d, write_fd=%d, info=%s", pid, read_fd, write_fd, info);
+    // LOG("SetFriend; pid=%d, read_fd=%d, write_fd=%d, info=%s", pid, read_fd, write_fd, info);
 
     friend->pid = pid;
 
@@ -243,7 +243,7 @@ void HandleLevelPrint() {
     fprintf(parent_write_stream, "%d\n", res);
 }
 
-void HandleCheck(const char *const parent_friend_name) {
+int HandleCheck(const char *const parent_friend_name) {
     if (strncmp(parent_friend_name, current_name, MAX_FRIEND_NAME_LEN) == 0) {
         printf("%s\n", current_info);
         for (int level = 0; level < MAX_TREE_DEPTH; ++level) {  // IDDFS.
@@ -261,7 +261,7 @@ void HandleCheck(const char *const parent_friend_name) {
         if (!is_root) {
             fprintf(parent_write_stream, "%d\n", RESPONSE_OK);
         }
-        return;
+        return RESPONSE_OK;
     }
 
     // DFS for target parent.
@@ -271,7 +271,7 @@ void HandleCheck(const char *const parent_friend_name) {
             if (!is_root) {
                 fprintf(parent_write_stream, "%d\n", RESPONSE_OK);
             }
-            return;
+            return RESPONSE_OK;
         }
     }
     if (is_root) {
@@ -279,9 +279,64 @@ void HandleCheck(const char *const parent_friend_name) {
     } else {
         fprintf(parent_write_stream, "%d\n", RESPONSE_NOT_FOUND);
     }
+    return RESPONSE_NOT_FOUND;
 }
 
 void HandleGraduate(const char *const friend_name) {
+    if (is_root) {
+        int ret = HandleCheck(friend_name);
+        if (ret != RESPONSE_OK) {
+            return;
+        }
+    }
+
+    // Kill myself.
+    if (strncmp(friend_name, current_name, MAX_FRIEND_NAME_LEN) == 0) {
+        for (int i = 0; i < children_size; ++i) {
+            fprintf(children[i].write_stream, "Graduate %s\n", children[i].name);
+            int status;
+            LOG("Waiting for %d to die", children[i].pid);
+            waitpid(children[i].pid, &status, 0);
+            LOG("%d died with status %d", children[i].pid, status);
+        }
+        if (is_root) {
+            print_final_graduate();
+        }
+        _exit(0);
+    }
+
+    // DFS for target friend.
+    for (int i = 0; i < children_size; ++i) {
+        // Found.
+        if (strncmp(children[i].name, friend_name, MAX_FRIEND_NAME_LEN) == 0) {
+            fprintf(children[i].write_stream, "Graduate %s\n", friend_name);
+            int status;
+            LOG("Waiting for %d to die", children[i].pid);
+            waitpid(children[i].pid, &status, 0);
+            LOG("%d died with status %d", children[i].pid, status);
+
+            // Remove this entry in the children table.
+            for (int j = i + 1; j < children_size; ++j) {
+                children[j - 1] = children[j];
+            }
+            InitializeFriend(&children[children_size--]);
+            if (!is_root) {
+                fprintf(parent_write_stream, "%d\n", RESPONSE_OK);
+            }
+            return;
+        }
+
+        int res = Send(&children[i], "Graduate %s\n", friend_name);
+        if (res == RESPONSE_OK) {
+            if (!is_root) {
+                fprintf(parent_write_stream, "%d\n", RESPONSE_OK);
+            }
+            return;
+        }
+    }
+    if (!is_root) {
+        fprintf(parent_write_stream, "%d\n", RESPONSE_NOT_FOUND);
+    }
 }
 
 void HandleAdopt() {
@@ -323,7 +378,9 @@ int main(int argc, char *argv[]) {
 
     char cmd[MAX_CMD_LEN];
     while (scanf("%s", cmd) != EOF) {
-        LOG("%s got command: %s", current_info, cmd);
+        if (strlen(cmd) > 1) {  // Ignore my custom commands.
+            LOG("%s got command: %s", current_info, cmd);
+        }
         switch (cmd[0]) {
             case 'M': {
                 char parent_friend_name[MAX_FRIEND_NAME_LEN], child_friend_info[MAX_FRIEND_INFO_LEN];
@@ -417,10 +474,5 @@ int main(int argc, char *argv[]) {
     }
     */
 
-    // final print, please leave this in, it may bepart of the test case output
-    if (is_root) {
-        // sleep(10000);
-        print_final_graduate();
-    }
     return 0;
 }
