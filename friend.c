@@ -191,8 +191,8 @@ void HandleMeet(const char *const parent_friend_name, const char *const child_fr
             print_direct_meet(child->name);
         } else {
             print_indirect_meet(parent_friend_name, child_friend_name);
-            fprintf(parent_write_stream, "%d\n", RESPONSE_OK);
         }
+        fprintf(parent_write_stream, "%d\n", RESPONSE_OK);
         return;
     }
 
@@ -200,9 +200,7 @@ void HandleMeet(const char *const parent_friend_name, const char *const child_fr
     for (int i = 0; i < children_size; ++i) {
         int res = Send(&children[i], "Meet %s %s\n", parent_friend_name, child_friend_info);
         if (res == RESPONSE_OK) {
-            if (!is_root) {
-                fprintf(parent_write_stream, "%d\n", RESPONSE_OK);
-            }
+            fprintf(parent_write_stream, "%d\n", RESPONSE_OK);
             return;
         }
     }
@@ -213,7 +211,7 @@ void HandleMeet(const char *const parent_friend_name, const char *const child_fr
     }
 }
 
-// Only called in nodes other than root.
+// Tell nodes that are `level` levels deeper than current node to print their info.
 void HandleLevelPrint() {
     int level;  // level >= 0
     int has_printed;
@@ -258,9 +256,7 @@ int HandleCheck(const char *const parent_friend_name) {
                 printf("\n");
             }
         }
-        if (!is_root) {
-            fprintf(parent_write_stream, "%d\n", RESPONSE_OK);
-        }
+        fprintf(parent_write_stream, "%d\n", RESPONSE_OK);
         return RESPONSE_OK;
     }
 
@@ -268,17 +264,15 @@ int HandleCheck(const char *const parent_friend_name) {
     for (int i = 0; i < children_size; ++i) {
         int res = Send(&children[i], "Check %s\n", parent_friend_name);
         if (res == RESPONSE_OK) {
-            if (!is_root) {
-                fprintf(parent_write_stream, "%d\n", RESPONSE_OK);
-            }
+            fprintf(parent_write_stream, "%d\n", RESPONSE_OK);
+
             return RESPONSE_OK;
         }
     }
     if (is_root) {
         print_fail_check(parent_friend_name);
-    } else {
-        fprintf(parent_write_stream, "%d\n", RESPONSE_NOT_FOUND);
     }
+    fprintf(parent_write_stream, "%d\n", RESPONSE_NOT_FOUND);
     return RESPONSE_NOT_FOUND;
 }
 
@@ -320,23 +314,18 @@ void HandleGraduate(const char *const friend_name) {
                 children[j - 1] = children[j];
             }
             InitializeFriend(&children[children_size--]);
-            if (!is_root) {
-                fprintf(parent_write_stream, "%d\n", RESPONSE_OK);
-            }
+
+            fprintf(parent_write_stream, "%d\n", RESPONSE_OK);
             return;
         }
 
         int res = Send(&children[i], "Graduate %s\n", friend_name);
         if (res == RESPONSE_OK) {
-            if (!is_root) {
-                fprintf(parent_write_stream, "%d\n", RESPONSE_OK);
-            }
+            fprintf(parent_write_stream, "%d\n", RESPONSE_OK);
             return;
         }
     }
-    if (!is_root) {
-        fprintf(parent_write_stream, "%d\n", RESPONSE_NOT_FOUND);
-    }
+    fprintf(parent_write_stream, "%d\n", RESPONSE_NOT_FOUND);
 }
 
 void HandleAdopt() {
@@ -371,9 +360,9 @@ int main(int argc, char *argv[]) {
     } else {
         SplitInfo(current_info, current_name, &current_value);
         is_root = false;
-        parent_write_stream = fdopen(PARENT_WRITE_FD, "w");
-        setvbuf(parent_write_stream, NULL, _IONBF, 0);
     }
+    parent_write_stream = fdopen(PARENT_WRITE_FD, "w");
+    setvbuf(parent_write_stream, NULL, _IONBF, 0);
     LOG("Init done; current_name=%s, current_value=%d", current_name, current_value);
 
     char cmd[MAX_CMD_LEN];
