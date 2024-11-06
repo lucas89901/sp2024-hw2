@@ -149,13 +149,13 @@ int Send(const Friend *const friend, const char *fmt, ...) {
     va_list args;
     va_start(args, fmt);
     if (vfprintf(friend->write_stream, fmt, args) < 0) {
-        ERR_EXIT("fprintf");
+        ERR_EXIT("vfprintf");
     }
     va_end(args);
 
     int res = -1;
     if (fscanf(friend->read_stream, "%d", &res) == EOF) {
-        ERR_EXIT("fscanf");
+        LOG("WARNING: No response");
     }
     LOG("Response from %d(%s): %d", friend->pid, friend->info, res);
     return res;
@@ -265,7 +265,6 @@ int HandleCheck(const char *const parent_friend_name) {
         int res = Send(&children[i], "Check %s\n", parent_friend_name);
         if (res == RESPONSE_OK) {
             fprintf(parent_write_stream, "%d\n", RESPONSE_OK);
-
             return RESPONSE_OK;
         }
     }
