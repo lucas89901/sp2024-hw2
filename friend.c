@@ -13,7 +13,6 @@
 
 #include "hw2.h"
 
-// somethings I recommend leaving here, but you may delete as you please
 static const char kRootName[MAX_FRIEND_INFO_LEN] = "Not_Tako";  // root of tree
 static char current_info[MAX_FRIEND_INFO_LEN];                  // current process info
 static char current_name[MAX_FRIEND_NAME_LEN];                  // current process name
@@ -22,8 +21,6 @@ static bool is_root = false;
 Friend children[MAX_CHILDREN];
 int children_size = 0;
 FILE *parent_write_stream = NULL;
-pid_t pid;
-// char argv0_realpath[256];
 
 void SplitInfo(const char *const info, char *const name, int *const value) {
     char *sep = strchr(info, '_');
@@ -141,7 +138,7 @@ please do above 2 functions to save some time
 // fd 4-: Children I/O
 
 // Send message to `friend` and wait for response. Returns the response.
-int Send(const Friend *const friend, const char *fmt, ...) {
+response_t Send(const Friend *const friend, const char *fmt, ...) {
     if (strchr(fmt, '\n') == NULL) {
         LOG("WARNING: format string %s does not contain newline", fmt);
     }
@@ -153,154 +150,138 @@ int Send(const Friend *const friend, const char *fmt, ...) {
     }
     va_end(args);
 
-    int res = -1;
+    response_t res = RESPONSE_EMPTY;
     if (fscanf(friend->read_stream, "%d", &res) == EOF) {
-        LOG("WARNING: No response");
+        LOG("WARNING: Empty response");
     }
     LOG("Response from %d(%s): %d", friend->pid, friend->info, res);
     return res;
 }
 
-void HandleMeet(const char *const parent_friend_name, const char *const child_friend_info) {
+// Handle: ourself is the target of the command
+// Relay: relay the command (unchanged) to children, using DFS to search for the target
+//        and IPC to communicate DFS status
+
+response_t HandleMeet(const char *const parent_friend_name, const char *const child_friend_info) {
     char child_friend_name[MAX_FRIEND_NAME_LEN];
     SplitInfo(child_friend_info, child_friend_name, NULL);
 
-    if (strncmp(parent_friend_name, current_name, MAX_FRIEND_NAME_LEN) == 0) {
-        int pipefds_to_child[2], pipefds_from_child[2];
-        pipe2(pipefds_to_child, O_CLOEXEC);
-        pipe2(pipefds_from_child, O_CLOEXEC);
-        pid_t pid = fork();
-        if (pid < 0) {
-            ERR_EXIT("fork");
-        } else if (pid == 0) {
-            dup2(pipefds_to_child[0], PARENT_READ_FD);
-            dup2(pipefds_from_child[1], PARENT_WRITE_FD);
-            for (int i = 0; i < 2; ++i) {
-                close(pipefds_to_child[i]);
-                close(pipefds_from_child[i]);
-            }
-            execl("./friend", "./friend", child_friend_info, NULL);
-        }
+    int pipefds_to_child[2], pipefds_from_child[2];
+    pipe2(pipefds_to_child, O_CLOEXEC);
+    pipe2(pipefds_from_child, O_CLOEXEC);
 
-        // Parent
-        close(pipefds_to_child[0]);
-        close(pipefds_from_child[1]);
-        Friend *child = &children[children_size++];
-        SetFriend(child, pid, pipefds_from_child[0], pipefds_to_child[1], child_friend_info);
-        if (is_root) {
-            print_direct_meet(child->name);
-        } else {
-            print_indirect_meet(parent_friend_name, child_friend_name);
+    pid_t pid = fork();
+    if (pid < 0) {
+        ERR_EXIT("fork");
+    } else if (pid == 0) {  // Child
+        dup2(pipefds_to_child[0], PARENT_READ_FD);
+        dup2(pipefds_from_child[1], PARENT_WRITE_FD);
+        for (int i = 0; i < 2; ++i) {
+            close(pipefds_to_child[i]);
+            close(pipefds_from_child[i]);
         }
-        fprintf(parent_write_stream, "%d\n", RESPONSE_OK);
-        return;
+        execl("./friend", "./friend", child_friend_info, NULL);
     }
 
-    // DFS search for the target parent in children.
-    for (int i = 0; i < children_size; ++i) {
-        int res = Send(&children[i], "Meet %s %s\n", parent_friend_name, child_friend_info);
-        if (res == RESPONSE_OK) {
-            fprintf(parent_write_stream, "%d\n", RESPONSE_OK);
-            return;
-        }
-    }
+    // Parent
+    close(pipefds_to_child[0]);
+    close(pipefds_from_child[1]);
+
+    Friend *child = &children[children_size++];
+    SetFriend(child, pid, pipefds_from_child[0], pipefds_to_child[1], child_friend_info);
     if (is_root) {
-        print_fail_meet(parent_friend_name, child_friend_name);
+        print_direct_meet(child->name);
     } else {
-        fprintf(parent_write_stream, "%d\n", RESPONSE_NOT_FOUND);
+        print_indirect_meet(parent_friend_name, child_friend_name);
     }
+    return RESPONSE_HANDLE_OK;
 }
 
-// Tell nodes that are `level` levels deeper than current node to print their info.
-void HandleLevelPrint() {
-    int level;  // level >= 0
-    int has_printed;
-    scanf("%d %d", &level, &has_printed);
-    // LOG("LevelPrint parameters: level=%d", level);
-    if (level == 0) {
-        if (has_printed) {
-            printf(" ");
-        }
-        printf("%s", current_info);
-        fprintf(parent_write_stream, "%d\n", RESPONSE_OK);
-        return;
-    }
-
-    for (int i = 0; i < children_size; ++i) {
-        int res = Send(&children[i], "L %d %d\n", level - 1, has_printed);
-        if (res == RESPONSE_OK) {
-            has_printed = 1;
-        }
-    }
-    int res;
-    if (has_printed) {
-        res = RESPONSE_OK;
-    } else {
-        res = RESPONSE_NO_PRINT;
-    }
-    fprintf(parent_write_stream, "%d\n", res);
-}
-
-int HandleCheck(const char *const parent_friend_name) {
-    if (strncmp(parent_friend_name, current_name, MAX_FRIEND_NAME_LEN) == 0) {
-        printf("%s\n", current_info);
-        for (int level = 0; level < MAX_TREE_DEPTH; ++level) {  // IDDFS.
-            int has_printed = 0;
-            for (int i = 0; i < children_size; ++i) {
-                int res = Send(&children[i], "L %d %d\n", level, has_printed);
-                if (res == RESPONSE_OK) {
-                    has_printed = 1;
-                }
-            }
-            if (has_printed) {
-                printf("\n");
-            }
-        }
-        fprintf(parent_write_stream, "%d\n", RESPONSE_OK);
-        return RESPONSE_OK;
-    }
+response_t RelayMeet(const char *const parent_friend_name, const char *const child_friend_info) {
+    char child_friend_name[MAX_FRIEND_NAME_LEN];
+    SplitInfo(child_friend_info, child_friend_name, NULL);
 
     // DFS for target parent.
     for (int i = 0; i < children_size; ++i) {
-        int res = Send(&children[i], "Check %s\n", parent_friend_name);
-        if (res == RESPONSE_OK) {
-            fprintf(parent_write_stream, "%d\n", RESPONSE_OK);
-            return RESPONSE_OK;
+        int res = Send(&children[i], "Meet %s %s\n", parent_friend_name, child_friend_info);
+        if (res > 0) {
+            return RESPONSE_RELAY_OK;
         }
     }
+
     if (is_root) {
-        print_fail_check(parent_friend_name);
+        print_fail_meet(parent_friend_name, child_friend_name);
     }
-    fprintf(parent_write_stream, "%d\n", RESPONSE_NOT_FOUND);
     return RESPONSE_NOT_FOUND;
 }
 
-void HandleGraduate(const char *const friend_name) {
-    if (is_root) {
-        int ret = HandleCheck(friend_name);
-        if (ret != RESPONSE_OK) {
-            return;
-        }
+response_t HandleLevelPrint(int has_printed) {
+    if (has_printed) {
+        printf(" ");
     }
+    printf("%s", current_info);
+    return RESPONSE_HANDLE_OK;
+}
 
-    // Kill myself.
-    if (strncmp(friend_name, current_name, MAX_FRIEND_NAME_LEN) == 0) {
-        for (int i = 0; i < children_size; ++i) {
-            fprintf(children[i].write_stream, "Graduate %s\n", children[i].name);
-            int status;
-            LOG("Waiting for %d to die", children[i].pid);
-            waitpid(children[i].pid, &status, 0);
-            LOG("%d died with status %d", children[i].pid, status);
-        }
-        if (is_root) {
-            print_final_graduate();
-        }
-        _exit(0);
-    }
-
-    // DFS for target friend.
+// Tell nodes that are `level` levels deeper than current node to print their info.
+// `has_printed` is a flag denoting whether anything about the target level has been printed.
+response_t RelayLevelPrint(int level, int has_printed) {
     for (int i = 0; i < children_size; ++i) {
-        // Found.
+        int res = Send(&children[i], "LevelPrint %d %d\n", level - 1, has_printed);
+        if (res > 0 && res != RESPONSE_RELAY_OK_NO_PRINT) {
+            has_printed = 1;
+        }
+    }
+    if (has_printed) {
+        return RESPONSE_RELAY_OK;
+    }
+    return RESPONSE_RELAY_OK_NO_PRINT;
+}
+
+response_t HandleCheck(const char *const parent_friend_name) {
+    printf("%s\n", current_info);  // Equivalent to `HandleLevelPrint(0); printf("\n");`.
+
+    for (int level = 1; level < MAX_TREE_DEPTH; ++level) {  // IDDFS.
+        response_t res = RelayLevelPrint(level, 0);
+        if (res > 0 && res != RESPONSE_RELAY_OK_NO_PRINT) {
+            printf("\n");
+        }
+    }
+    return RESPONSE_HANDLE_OK;
+}
+
+response_t RelayCheck(const char *const parent_friend_name) {
+    // DFS for target parent.
+    for (int i = 0; i < children_size; ++i) {
+        int res = Send(&children[i], "Check %s\n", parent_friend_name);
+        if (res > 0) {
+            return RESPONSE_HANDLE_OK;
+        }
+    }
+
+    if (is_root) {
+        print_fail_check(parent_friend_name);
+    }
+    return RESPONSE_NOT_FOUND;
+}
+
+response_t HandleGraduate(const char *const friend_name) {
+    for (int i = 0; i < children_size; ++i) {
+        // Use `waitpid()` instead of IPC as response.
+        fprintf(children[i].write_stream, "Graduate %s\n", children[i].name);
+        int status;
+        LOG("Waiting for %d to die", children[i].pid);
+        waitpid(children[i].pid, &status, 0);
+        LOG("%d died with status %d", children[i].pid, WEXITSTATUS(status));
+    }
+    if (is_root) {
+        print_final_graduate();
+    }
+    _exit(0);
+}
+
+response_t RelayGraduate(const char *const friend_name) {
+    for (int i = 0; i < children_size; ++i) {
         if (strncmp(children[i].name, friend_name, MAX_FRIEND_NAME_LEN) == 0) {
             fprintf(children[i].write_stream, "Graduate %s\n", friend_name);
             int status;
@@ -314,17 +295,15 @@ void HandleGraduate(const char *const friend_name) {
             }
             InitializeFriend(&children[children_size--]);
 
-            fprintf(parent_write_stream, "%d\n", RESPONSE_OK);
-            return;
+            return RESPONSE_RELAY_OK;
         }
 
         int res = Send(&children[i], "Graduate %s\n", friend_name);
-        if (res == RESPONSE_OK) {
-            fprintf(parent_write_stream, "%d\n", RESPONSE_OK);
-            return;
+        if (res > 0) {
+            return RESPONSE_RELAY_OK;
         }
     }
-    fprintf(parent_write_stream, "%d\n", RESPONSE_NOT_FOUND);
+    return RESPONSE_NOT_FOUND;
 }
 
 void HandleAdopt() {
@@ -332,10 +311,6 @@ void HandleAdopt() {
 
 int main(int argc, char *argv[]) {
     // Hi! Welcome to SP Homework 2, I hope you have fun
-    pid = getpid();  // you might need this when using fork()
-    // if (realpath(argv[0], argv0_realpath) < 0) {
-    //     ERR_EXIT("realpath");
-    // }
     if (argc != 2) {
         fprintf(stderr, "Usage: ./friend [friend_info]\n");
         return 0;
@@ -366,26 +341,44 @@ int main(int argc, char *argv[]) {
 
     char cmd[MAX_CMD_LEN];
     while (scanf("%s", cmd) != EOF) {
-        if (strlen(cmd) > 1) {  // Ignore my custom commands.
-            LOG("%s got command: %s", current_info, cmd);
-        }
+        LOG("%s got command: %s", current_info, cmd);
+        response_t res = RESPONSE_EMPTY;
         switch (cmd[0]) {
             case 'M': {
                 char parent_friend_name[MAX_FRIEND_NAME_LEN], child_friend_info[MAX_FRIEND_INFO_LEN];
                 scanf("%s %s", parent_friend_name, child_friend_info);
-                HandleMeet(parent_friend_name, child_friend_info);
+                if (strncmp(current_name, parent_friend_name, MAX_FRIEND_NAME_LEN) == 0) {
+                    res = HandleMeet(parent_friend_name, child_friend_info);
+                } else {
+                    res = RelayMeet(parent_friend_name, child_friend_info);
+                }
                 break;
             }
             case 'C': {
                 char parent_friend_name[MAX_FRIEND_NAME_LEN];
                 scanf("%s", parent_friend_name);
-                HandleCheck(parent_friend_name);
+                if (strncmp(current_name, parent_friend_name, MAX_FRIEND_NAME_LEN) == 0) {
+                    res = HandleCheck(parent_friend_name);
+                } else {
+                    res = RelayCheck(parent_friend_name);
+                }
                 break;
             }
             case 'G': {
                 char friend_name[MAX_FRIEND_NAME_LEN];
                 scanf("%s", friend_name);
-                HandleGraduate(friend_name);
+                if (is_root) {
+                    if (strncmp(current_name, friend_name, MAX_FRIEND_NAME_LEN) == 0) {
+                        HandleCheck(friend_name);
+                    } else if (RelayCheck(friend_name) < 0) {
+                        break;
+                    }
+                }
+                if (strncmp(current_name, friend_name, MAX_FRIEND_NAME_LEN) == 0) {
+                    res = HandleGraduate(friend_name);
+                } else {
+                    res = RelayGraduate(friend_name);
+                }
                 break;
             }
             case 'A': {
@@ -393,10 +386,17 @@ int main(int argc, char *argv[]) {
                 break;
             }
             case 'L': {
-                HandleLevelPrint();
+                int level, has_printed;
+                scanf("%d %d", &level, &has_printed);
+                if (level == 0) {
+                    res = HandleLevelPrint(has_printed);
+                } else {
+                    res = RelayLevelPrint(level, has_printed);
+                }
                 break;
             }
         }
+        fprintf(parent_write_stream, "%d\n", res);
     }
 
     // TODO:

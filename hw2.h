@@ -40,8 +40,12 @@ typedef struct {
     int value;
 } Friend;
 
-#define RESPONSE_OK 0
-#define RESPONSE_NOT_FOUND 1
-#define RESPONSE_NO_PRINT 2  // No nodes have been printed.
+typedef int response_t;
+#define RESPONSE_HANDLE_OK 1
+#define RESPONSE_RELAY_OK 2
+// Nothing has been printed.
+#define RESPONSE_RELAY_OK_NO_PRINT 3
+#define RESPONSE_EMPTY -1
+#define RESPONSE_NOT_FOUND -2
 
 #endif  // HW2_H_
