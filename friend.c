@@ -73,35 +73,35 @@ void SetFriend(Friend *const friend, pid_t pid, int read_fd, int write_fd, const
 }
 
 // a bunch of prints for you
-void print_direct_meet(char *friend_name) {
+void print_direct_meet(const char *const friend_name) {
     fprintf(stdout, "Not_Tako has met %s by himself\n", friend_name);
 }
 
-void print_indirect_meet(char *parent_friend_name, char *child_friend_name) {
+void print_indirect_meet(const char *const parent_friend_name, const char *const child_friend_name) {
     fprintf(stdout, "Not_Tako has met %s through %s\n", child_friend_name, parent_friend_name);
 }
 
-void print_fail_meet(char *parent_friend_name, char *child_friend_name) {
+void print_fail_meet(const char *const parent_friend_name, const char *const child_friend_name) {
     fprintf(stdout, "Not_Tako does not know %s to meet %s\n", parent_friend_name, child_friend_name);
 }
 
-void print_fail_check(char *parent_friend_name) {
+void print_fail_check(const char *const parent_friend_name) {
     fprintf(stdout, "Not_Tako has checked, he doesn't know %s\n", parent_friend_name);
 }
 
-void print_success_adopt(char *parent_friend_name, char *child_friend_name) {
+void print_success_adopt(const char *const parent_friend_name, const char *const child_friend_name) {
     fprintf(stdout, "%s has adopted %s\n", parent_friend_name, child_friend_name);
 }
 
-void print_fail_adopt(char *parent_friend_name, char *child_friend_name) {
+void print_fail_adopt(const char *const parent_friend_name, const char *const child_friend_name) {
     fprintf(stdout, "%s is a descendant of %s\n", parent_friend_name, child_friend_name);
 }
 
-void print_compare_gtr(char *friend_name) {
+void print_compare_gtr(const char *const friend_name) {
     fprintf(stdout, "Not_Tako is still friends with %s\n", friend_name);
 }
 
-void print_compare_leq(char *friend_name) {
+void print_compare_leq(const char *const friend_name) {
     fprintf(stdout, "%s is dead to Not_Tako\n", friend_name);
 }
 
