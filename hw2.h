@@ -9,7 +9,8 @@
 #define PARENT_READ_FD STDIN_FILENO  // File descriptor for reading from parent
 #define PARENT_WRITE_FD 3            // File descriptor for writing to parent
 
-#define MAX_CHILDREN 8
+// +1 to handle adopt cases where `child` is a direct child of `parent`
+#define MAX_CHILDREN 8 + 1
 #define MAX_FIFO_NAME_LEN 9
 #define MAX_FRIEND_INFO_LEN 12
 #define MAX_FRIEND_NAME_LEN 9
@@ -45,7 +46,10 @@ typedef int response_t;
 #define RESPONSE_RELAY_OK 2
 // Nothing has been printed.
 #define RESPONSE_RELAY_OK_NO_PRINT 3
+#define RESPONSE_SEARCH_FOUND 4
+#define RESPONSE_SEARCH_NOT_FOUND 5
 #define RESPONSE_EMPTY -1
+// Continue DFS.
 #define RESPONSE_NOT_FOUND -2
 
 #endif  // HW2_H_

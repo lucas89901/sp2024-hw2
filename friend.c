@@ -1,4 +1,5 @@
 #define _GNU_SOURCE
+#include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <stdarg.h>
@@ -152,17 +153,21 @@ response_t Send(const Friend *const friend, const char *fmt, ...) {
 
     response_t res = RESPONSE_EMPTY;
     if (fscanf(friend->read_stream, "%d", &res) == EOF) {
-        LOG("WARNING: Empty response");
+        LOG("WARNING: Friend died before getting response");
     }
-    LOG("Response from %d(%s): %d", friend->pid, friend->info, res);
+#ifdef DEBUG
+    char cmd[16];
+    sscanf(fmt, "%s", cmd);
+    LOG("%s got response from %s(%d): %d (cmd=%s)", current_info, friend->info, friend->pid, res, cmd);
+#endif
     return res;
 }
 
-// Handle: ourself is the target of the command
+// Handle: ourself is the target handler for the command
 // Relay: relay the command (unchanged) to children, using DFS to search for the target
 //        and IPC to communicate DFS status
 
-response_t HandleMeet(const char *const parent_friend_name, const char *const child_friend_info) {
+response_t HandleMeet(const char *const parent_friend_name, const char *const child_friend_info, int print) {
     char child_friend_name[MAX_FRIEND_NAME_LEN];
     SplitInfo(child_friend_info, child_friend_name, NULL);
 
@@ -189,21 +194,23 @@ response_t HandleMeet(const char *const parent_friend_name, const char *const ch
 
     Friend *child = &children[children_size++];
     SetFriend(child, pid, pipefds_from_child[0], pipefds_to_child[1], child_friend_info);
-    if (is_root) {
-        print_direct_meet(child->name);
-    } else {
-        print_indirect_meet(parent_friend_name, child_friend_name);
+    if (print) {
+        if (is_root) {
+            print_direct_meet(child->name);
+        } else {
+            print_indirect_meet(parent_friend_name, child_friend_name);
+        }
     }
     return RESPONSE_HANDLE_OK;
 }
 
-response_t RelayMeet(const char *const parent_friend_name, const char *const child_friend_info) {
+response_t RelayMeet(const char *const parent_friend_name, const char *const child_friend_info, int print) {
     char child_friend_name[MAX_FRIEND_NAME_LEN];
     SplitInfo(child_friend_info, child_friend_name, NULL);
 
     // DFS for target parent.
     for (int i = 0; i < children_size; ++i) {
-        int res = Send(&children[i], "Meet %s %s\n", parent_friend_name, child_friend_info);
+        int res = Send(&children[i], "%ceet %s %s\n", "mM"[print], parent_friend_name, child_friend_info);
         if (res > 0) {
             return RESPONSE_RELAY_OK;
         }
@@ -226,6 +233,7 @@ response_t HandleLevelPrint(int has_printed) {
 // Tell nodes that are `level` levels deeper than current node to print their info.
 // `has_printed` is a flag denoting whether anything about the target level has been printed.
 response_t RelayLevelPrint(int level, int has_printed) {
+    LOG("%s: childern_size=%d", current_name, children_size);
     for (int i = 0; i < children_size; ++i) {
         int res = Send(&children[i], "LevelPrint %d %d\n", level - 1, has_printed);
         if (res > 0 && res != RESPONSE_RELAY_OK_NO_PRINT) {
@@ -242,8 +250,14 @@ response_t HandleCheck(const char *const parent_friend_name) {
     printf("%s\n", current_info);  // Equivalent to `HandleLevelPrint(0); printf("\n");`.
 
     for (int level = 1; level < MAX_TREE_DEPTH; ++level) {  // IDDFS.
+#ifdef DEBUG
+        // printf("(Level %d start)\n", level);
+#endif
         response_t res = RelayLevelPrint(level, 0);
         if (res > 0 && res != RESPONSE_RELAY_OK_NO_PRINT) {
+#ifdef DEBUG
+            // printf("(Level %d end)", level);
+#endif
             printf("\n");
         }
     }
@@ -306,7 +320,165 @@ response_t RelayGraduate(const char *const friend_name) {
     return RESPONSE_NOT_FOUND;
 }
 
-void HandleAdopt() {
+response_t HandleSearch(const char *const child_friend_name) {
+    if (strncmp(child_friend_name, current_name, MAX_FRIEND_NAME_LEN) == 0) {
+        return RESPONSE_SEARCH_FOUND;
+    }
+    for (int i = 0; i < children_size; ++i) {
+        int res = Send(&children[i], "S %s %s\n", children[i].name, child_friend_name);
+        if (res == RESPONSE_SEARCH_FOUND) {
+            return RESPONSE_SEARCH_FOUND;
+        }
+    }
+    return RESPONSE_SEARCH_NOT_FOUND;
+}
+
+response_t RelaySearch(const char *const parent_friend_name, const char *const child_friend_name) {
+    for (int i = 0; i < children_size; ++i) {
+        response_t res = Send(&children[i], "S %s %s\n", parent_friend_name, child_friend_name);
+        if (res > 0) {  // Target parent found.
+            return res;
+        }
+    }
+    return RESPONSE_NOT_FOUND;
+}
+
+response_t HandleAdoptPrint(const char *const child_friend_name) {
+    LOG("AdoptPrint(%s)", child_friend_name);
+    FILE *fifo_stream = fopen("Adopt.fifo", "w");
+    if (fifo_stream == NULL) {
+        perror("FIFO write end fopen");
+    }
+
+    for (int i = 0; i < children_size; ++i) {
+        fprintf(fifo_stream, "%s %s\n", current_name, children[i].info);
+        LOG("Written to Adopt.fifo: %s %s", current_name, children[i].info);
+        response_t res = Send(&children[i], "P %s\n", children[i].name);
+        CHECK(res == RESPONSE_HANDLE_OK);
+    }
+    if (fclose(fifo_stream) == EOF) {
+        ERR_EXIT("fclose");
+    }
+    return RESPONSE_HANDLE_OK;
+}
+
+response_t RelayAdoptPrint(const char *const child_friend_name) {
+    for (int i = 0; i < children_size; ++i) {
+        // First time entering handle mode.
+        if (strncmp(child_friend_name, children[i].name, MAX_FRIEND_NAME_LEN) == 0) {
+            FILE *fifo_stream = fopen("Adopt.fifo", "w");
+            if (fifo_stream == NULL) {
+                perror("fopen");
+            }
+            setvbuf(fifo_stream, NULL, _IONBF, 0);
+            fprintf(fifo_stream, "%d\n", children[i].value);
+            fclose(fifo_stream);
+        }
+
+        response_t res = Send(&children[i], "P %s\n", child_friend_name);
+        if (res > 0) {
+            return RESPONSE_RELAY_OK;
+        }
+    }
+    return RESPONSE_NOT_FOUND;
+}
+
+// Adopt the subtree according to information in FIFO.
+response_t HandleAdopt() {
+    // Only Adopt has to respond to parent early in handler and not in `main()`. This is due to blocking I/O
+    // constraints about FIFOs.
+    fprintf(parent_write_stream, "%d\n", RESPONSE_HANDLE_OK);
+
+    FILE *fifo_stream = fopen("Adopt.fifo", "r");
+    if (fifo_stream == NULL) {
+        ERR_EXIT("FIFO read end fopen");
+    }
+    setvbuf(fifo_stream, NULL, _IONBF, 0);
+
+    char meet_parent_name[MAX_FRIEND_NAME_LEN], meet_child_info[MAX_FRIEND_INFO_LEN];
+    LOG("Ready to read from FIFO");
+    while (fscanf(fifo_stream, "%s %s", meet_parent_name, meet_child_info) != EOF) {
+        LOG("Read from Adopt.fifo: %s %s", meet_parent_name, meet_child_info);
+        char meet_child_name[MAX_FRIEND_NAME_LEN];
+        int meet_child_value;
+        SplitInfo(meet_child_info, meet_child_name, &meet_child_value);
+        meet_child_value %= current_value;
+        snprintf(meet_child_info, MAX_FRIEND_INFO_LEN, "%s_%02d", meet_child_name, meet_child_value);
+
+        response_t res;
+        if (strncmp(current_name, meet_parent_name, MAX_FRIEND_NAME_LEN) == 0) {
+            res = HandleMeet(meet_parent_name, meet_child_info, 0);
+        } else {
+            res = RelayMeet(meet_parent_name, meet_child_info, 0);
+        }
+        CHECK(res > 0);
+    }
+
+    if (fclose(fifo_stream) == EOF) {
+        ERR_EXIT("fclose");
+    }
+    return RESPONSE_HANDLE_OK;
+}
+
+response_t RelayAdopt(const char *const parent_friend_name) {
+    for (int i = 0; i < children_size; ++i) {
+        response_t res = Send(&children[i], "Adopt %s UNUSED\n", parent_friend_name);
+        if (res > 0) {
+            return RESPONSE_RELAY_OK;
+        }
+    }
+    return RESPONSE_NOT_FOUND;
+}
+
+response_t RootHandleAdopt(const char *const parent_friend_name, const char *const child_friend_name) {
+    // Determine if child is a descendant of parent.
+    response_t search_result;
+    if (strncmp(current_name, child_friend_name, MAX_FRIEND_NAME_LEN) == 0) {
+        search_result = HandleSearch(parent_friend_name);
+    } else {
+        search_result = RelaySearch(child_friend_name, parent_friend_name);
+    }
+    assert(search_result == RESPONSE_SEARCH_FOUND || search_result == RESPONSE_SEARCH_NOT_FOUND);
+    if (search_result == RESPONSE_SEARCH_FOUND) {
+        print_fail_adopt(parent_friend_name, child_friend_name);
+        return RESPONSE_EMPTY;
+    }
+
+    if (mkfifo("Adopt.fifo", S_IRWXU) < 0) {
+        ERR_EXIT("mkfifo");
+    }
+    LOG("mkfifo() done");
+
+    // Because opening a FIFO in nonblocking mode requires the read end to be opened first, we must first find the
+    // target parent that will adopt nodes, as it opens the read end of FIFO.
+    response_t res;
+    if (strncmp(current_name, parent_friend_name, MAX_FRIEND_NAME_LEN) == 0) {
+        res = HandleAdopt();
+    } else {
+        res = RelayAdopt(parent_friend_name);
+    }
+
+    // Then we can open the FIFO for writes.
+    FILE *fifo_stream = fopen("Adopt.fifo", "w");
+    if (fifo_stream == NULL) {
+        perror("fopen");
+    }
+    setvbuf(fifo_stream, NULL, _IONBF, 0);
+    fprintf(fifo_stream, "%s %s_", parent_friend_name, child_friend_name);
+
+    // Root will never be adopted, so it's always relay.
+    res = RelayAdoptPrint(child_friend_name);
+    CHECK(res > 0);
+    res = RelayGraduate(child_friend_name);
+
+    // Close this after `RelayAdoptPrint()` to ensure that at least one write end exists.
+    // After this last write end closes, the read end at the target parent should close automatically.
+    fclose(fifo_stream);
+    if (unlink("Adopt.fifo") < 0) {
+        ERR_EXIT("unlink");
+    }
+    print_success_adopt(parent_friend_name, child_friend_name);
+    return res;
 }
 
 int main(int argc, char *argv[]) {
@@ -343,14 +515,15 @@ int main(int argc, char *argv[]) {
     while (scanf("%s", cmd) != EOF) {
         LOG("%s got command: %s", current_info, cmd);
         response_t res = RESPONSE_EMPTY;
-        switch (cmd[0]) {
+        int respond = 1;
+        switch (toupper(cmd[0])) {
             case 'M': {
                 char parent_friend_name[MAX_FRIEND_NAME_LEN], child_friend_info[MAX_FRIEND_INFO_LEN];
                 scanf("%s %s", parent_friend_name, child_friend_info);
                 if (strncmp(current_name, parent_friend_name, MAX_FRIEND_NAME_LEN) == 0) {
-                    res = HandleMeet(parent_friend_name, child_friend_info);
+                    res = HandleMeet(parent_friend_name, child_friend_info, isupper(cmd[0]) != 0);
                 } else {
-                    res = RelayMeet(parent_friend_name, child_friend_info);
+                    res = RelayMeet(parent_friend_name, child_friend_info, isupper(cmd[0]) != 0);
                 }
                 break;
             }
@@ -382,9 +555,22 @@ int main(int argc, char *argv[]) {
                 break;
             }
             case 'A': {
-                HandleAdopt();
+                // respond_to_parent = false;
+                char parent_friend_name[MAX_FRIEND_NAME_LEN], child_friend_name[MAX_FRIEND_NAME_LEN];
+                scanf("%s %s", parent_friend_name, child_friend_name);
+                if (is_root) {
+                    res = RootHandleAdopt(parent_friend_name, child_friend_name);
+                } else if (strncmp(current_name, parent_friend_name, MAX_FRIEND_NAME_LEN) == 0) {
+                    respond = 0;  // Don't respond here because we responded manually in `HandleAdopt()`.
+                    res = HandleAdopt();
+                } else {
+                    res = RelayAdopt(parent_friend_name);
+                }
                 break;
             }
+
+            // Custom commands.
+            // LevelPrint
             case 'L': {
                 int level, has_printed;
                 scanf("%d %d", &level, &has_printed);
@@ -395,8 +581,32 @@ int main(int argc, char *argv[]) {
                 }
                 break;
             }
+            // Search: Search subtree of `parent` for `child`. Essentially "Check" without printing.
+            case 'S': {
+                char parent_friend_name[MAX_FRIEND_NAME_LEN], child_friend_name[MAX_FRIEND_NAME_LEN];
+                scanf("%s %s", parent_friend_name, child_friend_name);
+                if (strncmp(current_name, parent_friend_name, MAX_FRIEND_NAME_LEN) == 0) {
+                    res = HandleSearch(child_friend_name);
+                } else {
+                    res = RelaySearch(parent_friend_name, child_friend_name);
+                }
+                break;
+            }
+            // AdoptPrint: Recursively print all parent-child relationships to file `Adopt.fifo`.
+            case 'P': {
+                char child_friend_name[MAX_FRIEND_NAME_LEN];
+                scanf("%s", child_friend_name);
+                if (strncmp(current_name, child_friend_name, MAX_FRIEND_NAME_LEN) == 0) {
+                    res = HandleAdoptPrint(child_friend_name);
+                } else {
+                    res = RelayAdoptPrint(child_friend_name);
+                }
+                break;
+            }
         }
-        fprintf(parent_write_stream, "%d\n", res);
+        if (respond) {
+            fprintf(parent_write_stream, "%d\n", res);
+        }
     }
 
     // TODO:
