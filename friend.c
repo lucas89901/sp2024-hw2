@@ -23,6 +23,43 @@ Friend children[MAX_CHILDREN];
 int children_size = 0;
 FILE *parent_write_stream = NULL;
 
+// a bunch of prints for you
+void print_direct_meet(const char *const friend_name) {
+    fprintf(stdout, "Not_Tako has met %s by himself\n", friend_name);
+}
+
+void print_indirect_meet(const char *const parent_friend_name, const char *const child_friend_name) {
+    fprintf(stdout, "Not_Tako has met %s through %s\n", child_friend_name, parent_friend_name);
+}
+
+void print_fail_meet(const char *const parent_friend_name, const char *const child_friend_name) {
+    fprintf(stdout, "Not_Tako does not know %s to meet %s\n", parent_friend_name, child_friend_name);
+}
+
+void print_fail_check(const char *const parent_friend_name) {
+    fprintf(stdout, "Not_Tako has checked, he doesn't know %s\n", parent_friend_name);
+}
+
+void print_success_adopt(const char *const parent_friend_name, const char *const child_friend_name) {
+    fprintf(stdout, "%s has adopted %s\n", parent_friend_name, child_friend_name);
+}
+
+void print_fail_adopt(const char *const parent_friend_name, const char *const child_friend_name) {
+    fprintf(stdout, "%s is a descendant of %s\n", parent_friend_name, child_friend_name);
+}
+
+void print_compare_gtr(const char *const friend_name) {
+    fprintf(stdout, "Not_Tako is still friends with %s\n", friend_name);
+}
+
+void print_compare_leq(const char *const friend_name) {
+    fprintf(stdout, "%s is dead to Not_Tako\n", friend_name);
+}
+
+void print_final_graduate() {
+    fprintf(stdout, "Congratulations! You've finished Not_Tako's annoying tasks!\n");
+}
+
 void SplitInfo(const char *const info, char *const name, int *const value) {
     char *sep = strchr(info, '_');
     CHECK(sep != NULL);
@@ -69,60 +106,6 @@ void SetFriend(Friend *const friend, pid_t pid, int read_fd, int write_fd, const
     strncpy(friend->info, info, MAX_FRIEND_INFO_LEN);
     SplitInfo(friend->info, friend->name, &friend->value);
 }
-
-// a bunch of prints for you
-void print_direct_meet(const char *const friend_name) {
-    fprintf(stdout, "Not_Tako has met %s by himself\n", friend_name);
-}
-
-void print_indirect_meet(const char *const parent_friend_name, const char *const child_friend_name) {
-    fprintf(stdout, "Not_Tako has met %s through %s\n", child_friend_name, parent_friend_name);
-}
-
-void print_fail_meet(const char *const parent_friend_name, const char *const child_friend_name) {
-    fprintf(stdout, "Not_Tako does not know %s to meet %s\n", parent_friend_name, child_friend_name);
-}
-
-void print_fail_check(const char *const parent_friend_name) {
-    fprintf(stdout, "Not_Tako has checked, he doesn't know %s\n", parent_friend_name);
-}
-
-void print_success_adopt(const char *const parent_friend_name, const char *const child_friend_name) {
-    fprintf(stdout, "%s has adopted %s\n", parent_friend_name, child_friend_name);
-}
-
-void print_fail_adopt(const char *const parent_friend_name, const char *const child_friend_name) {
-    fprintf(stdout, "%s is a descendant of %s\n", parent_friend_name, child_friend_name);
-}
-
-void print_compare_gtr(const char *const friend_name) {
-    fprintf(stdout, "Not_Tako is still friends with %s\n", friend_name);
-}
-
-void print_compare_leq(const char *const friend_name) {
-    fprintf(stdout, "%s is dead to Not_Tako\n", friend_name);
-}
-
-void print_final_graduate() {
-    fprintf(stdout, "Congratulations! You've finished Not_Tako's annoying tasks!\n");
-}
-
-/* terminate child pseudo code
-void clean_child(){
-    close(child read_fd);
-    close(child write_fd);
-    call wait() or waitpid() to reap child; // this is blocking
-}
-
-*/
-
-/* remember read and write may not be fully transmitted in HW1?
-void fully_write(int write_fd, void *write_buf, int write_len);
-
-void fully_read(int read_fd, void *read_buf, int read_len);
-
-please do above 2 functions to save some time
-*/
 
 // For root:
 // fd 0: Input from outside
