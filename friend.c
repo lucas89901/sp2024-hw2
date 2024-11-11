@@ -307,7 +307,7 @@ response_t RelayGraduate(const char *const friend_name) {
             for (int j = i + 1; j < children_size; ++j) {
                 children[j - 1] = children[j];
             }
-            InitializeFriend(&children[children_size--]);
+            InitializeFriend(&children[--children_size]);
 
             return RESPONSE_RELAY_OK;
         }
