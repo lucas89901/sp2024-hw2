@@ -286,6 +286,9 @@ response_t RelayGraduate(const char *const friend_name) {
             waitpid(children[i].pid, &status, 0);
             LOG("%d died with status %d", children[i].pid, status);
 
+            fclose(children[i].read_stream);
+            fclose(children[i].write_stream);
+
             // Remove this entry in the children table.
             for (int j = i + 1; j < children_size; ++j) {
                 children[j - 1] = children[j];
