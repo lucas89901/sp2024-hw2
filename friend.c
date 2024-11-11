@@ -349,6 +349,7 @@ response_t HandleAdoptPrint(const char *const child_friend_name) {
     if (fifo_stream == NULL) {
         perror("FIFO write end fopen");
     }
+    setvbuf(fifo_stream, NULL, _IONBF, 0);
 
     for (int i = 0; i < children_size; ++i) {
         fprintf(fifo_stream, "%s %s\n", current_name, children[i].info);
@@ -384,45 +385,59 @@ response_t RelayAdoptPrint(const char *const child_friend_name) {
 }
 
 // Adopt the subtree according to information in FIFO.
-response_t HandleAdopt() {
-    // Only Adopt has to respond to parent early in handler and not in `main()`. This is due to blocking I/O
-    // constraints about FIFOs.
-    fprintf(parent_write_stream, "%d\n", RESPONSE_HANDLE_OK);
-
-    FILE *fifo_stream = fopen("Adopt.fifo", "r");
-    if (fifo_stream == NULL) {
-        ERR_EXIT("FIFO read end fopen");
-    }
-    setvbuf(fifo_stream, NULL, _IONBF, 0);
-
-    char meet_parent_name[MAX_FRIEND_NAME_LEN], meet_child_info[MAX_FRIEND_INFO_LEN];
-    LOG("Ready to read from FIFO");
-    while (fscanf(fifo_stream, "%s %s", meet_parent_name, meet_child_info) != EOF) {
-        LOG("Read from Adopt.fifo: %s %s", meet_parent_name, meet_child_info);
-        char meet_child_name[MAX_FRIEND_NAME_LEN];
-        int meet_child_value;
-        SplitInfo(meet_child_info, meet_child_name, &meet_child_value);
-        meet_child_value %= current_value;
-        snprintf(meet_child_info, MAX_FRIEND_INFO_LEN, "%s_%02d", meet_child_name, meet_child_value);
-
-        response_t res;
-        if (strncmp(current_name, meet_parent_name, MAX_FRIEND_NAME_LEN) == 0) {
-            res = HandleMeet(meet_parent_name, meet_child_info, 0);
-        } else {
-            res = RelayMeet(meet_parent_name, meet_child_info, 0);
+response_t HandleAdopt(adopt_op_t op) {
+    static FILE *fifo_stream;
+    static int fifo_fd;
+    if (op == ADOPT_OPEN) {
+        fifo_fd = open("Adopt.fifo", O_RDONLY | O_NONBLOCK);
+        LOG("FIFO read end fd = %d", fifo_fd);
+        fifo_stream = fdopen(fifo_fd, "r");
+        if (fifo_stream == NULL) {
+            ERR_EXIT("FIFO read end fopen");
         }
-        CHECK(res > 0);
-    }
+        setvbuf(fifo_stream, NULL, _IONBF, 0);
+        return RESPONSE_HANDLE_OK;
+    } else if (op == ADOPT_READ) {
+        // Only Adopt has to respond to parent early in handler and not in `main()`. This is due to blocking I/O
+        // constraints about FIFOs.
+        fprintf(parent_write_stream, "%d\n", RESPONSE_HANDLE_OK);
 
-    if (fclose(fifo_stream) == EOF) {
-        ERR_EXIT("fclose");
+        CHECK(fifo_stream != NULL);
+        char meet_parent_name[MAX_FRIEND_NAME_LEN], meet_child_info[MAX_FRIEND_INFO_LEN];
+        LOG("Ready to read from FIFO");
+
+        // DEBUG: contents in FIFO
+        // char fifo_buffer[4096] = {};
+        // read(fifo_fd, fifo_buffer, 4096);
+        // LOG("fifo_buffer=%s", fifo_buffer);
+        // FILE *fifo_buffer_stream = fmemopen(fifo_buffer, strlen(fifo_buffer), "r");
+        while (fscanf(fifo_stream, "%s %s", meet_parent_name, meet_child_info) != EOF) {
+            LOG("Read from Adopt.fifo: %s %s", meet_parent_name, meet_child_info);
+            char meet_child_name[MAX_FRIEND_NAME_LEN];
+            int meet_child_value;
+            SplitInfo(meet_child_info, meet_child_name, &meet_child_value);
+            meet_child_value %= current_value;
+            snprintf(meet_child_info, MAX_FRIEND_INFO_LEN, "%s_%02d", meet_child_name, meet_child_value);
+
+            response_t res;
+            if (strncmp(current_name, meet_parent_name, MAX_FRIEND_NAME_LEN) == 0) {
+                res = HandleMeet(meet_parent_name, meet_child_info, 0);
+            } else {
+                res = RelayMeet(meet_parent_name, meet_child_info, 0);
+            }
+            CHECK(res > 0);
+        }
+
+        if (fclose(fifo_stream) == EOF) {
+            ERR_EXIT("fclose");
+        }
+        return RESPONSE_HANDLE_OK;
     }
-    return RESPONSE_HANDLE_OK;
 }
 
-response_t RelayAdopt(const char *const parent_friend_name) {
+response_t RelayAdopt(const char *const parent_friend_name, adopt_op_t op) {
     for (int i = 0; i < children_size; ++i) {
-        response_t res = Send(&children[i], "Adopt %s UNUSED\n", parent_friend_name);
+        response_t res = Send(&children[i], "%cdopt %s UNUSED\n", "aA"[op], parent_friend_name);
         if (res > 0) {
             return RESPONSE_RELAY_OK;
         }
@@ -449,13 +464,13 @@ response_t RootHandleAdopt(const char *const parent_friend_name, const char *con
     }
     LOG("mkfifo() done");
 
-    // Because opening a FIFO in nonblocking mode requires the read end to be opened first, we must first find the
-    // target parent that will adopt nodes, as it opens the read end of FIFO.
+    // Because opening a FIFO requires the read end to be opened first, we must first find the target parent that will
+    // adopt nodes and make it open the read end.
     response_t res;
     if (strncmp(current_name, parent_friend_name, MAX_FRIEND_NAME_LEN) == 0) {
-        res = HandleAdopt();
+        res = HandleAdopt(ADOPT_OPEN);
     } else {
-        res = RelayAdopt(parent_friend_name);
+        res = RelayAdopt(parent_friend_name, ADOPT_OPEN);
     }
 
     // Then we can open the FIFO for writes.
@@ -470,6 +485,13 @@ response_t RootHandleAdopt(const char *const parent_friend_name, const char *con
     res = RelayAdoptPrint(child_friend_name);
     CHECK(res > 0);
     res = RelayGraduate(child_friend_name);
+    CHECK(res > 0);
+
+    if (strncmp(current_name, parent_friend_name, MAX_FRIEND_NAME_LEN) == 0) {
+        res = HandleAdopt(ADOPT_READ);
+    } else {
+        res = RelayAdopt(parent_friend_name, ADOPT_READ);
+    }
 
     // Close this after `RelayAdoptPrint()` to ensure that at least one write end exists.
     // After this last write end closes, the read end at the target parent should close automatically.
@@ -558,13 +580,21 @@ int main(int argc, char *argv[]) {
                 // respond_to_parent = false;
                 char parent_friend_name[MAX_FRIEND_NAME_LEN], child_friend_name[MAX_FRIEND_NAME_LEN];
                 scanf("%s %s", parent_friend_name, child_friend_name);
+                adopt_op_t op;
+                if (isupper(cmd[0])) {
+                    op = ADOPT_READ;
+                } else {
+                    op = ADOPT_OPEN;
+                }
                 if (is_root) {
                     res = RootHandleAdopt(parent_friend_name, child_friend_name);
                 } else if (strncmp(current_name, parent_friend_name, MAX_FRIEND_NAME_LEN) == 0) {
-                    respond = 0;  // Don't respond here because we responded manually in `HandleAdopt()`.
-                    res = HandleAdopt();
+                    if (op == ADOPT_READ) {
+                        respond = 0;  // Don't respond here because we responded manually in `HandleAdopt()`.
+                    }
+                    res = HandleAdopt(op);
                 } else {
-                    res = RelayAdopt(parent_friend_name);
+                    res = RelayAdopt(parent_friend_name, op);
                 }
                 break;
             }
