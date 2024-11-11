@@ -503,6 +503,130 @@ response_t RootHandleAdopt(const char *const parent_friend_name, const char *con
     return res;
 }
 
+response_t HandleCompareMod() {
+    current_value = (current_value * 2) % 99;
+    snprintf(current_info, MAX_FRIEND_INFO_LEN, "%s_%02d", current_name, current_value);
+    for (int i = 0; i < children_size; ++i) {
+        children[i].value = (children[i].value * 2) % 99;
+        snprintf(children[i].info, MAX_FRIEND_INFO_LEN, "%s_%02d", children[i].name, children[i].value);
+        response_t res = Send(&children[i], "%%\n");
+        CHECK(res > 0);
+    }
+    return RESPONSE_HANDLE_OK;
+}
+
+response_t HandleCompare(const char *const friend_name) {
+    // Early respond so that root can write number to `number.fifo`.
+    // We use `<friend_name>.fifo` as the response mechanism for Compare operations.
+    fprintf(parent_write_stream, "%d\n", RESPONSE_HANDLE_OK);
+
+    FILE *number_stream = fopen("number.fifo", "r");
+    if (number_stream == NULL) {
+        ERR_EXIT("fopen");
+    }
+    setvbuf(number_stream, NULL, _IONBF, 0);
+    int number;
+    if (fscanf(number_stream, "%d", &number) == EOF) {
+        ERR_EXIT("fscanf");
+    }
+    LOG("read from number.fifo: number=%d", number);
+    fclose(number_stream);
+
+    response_t res;
+    int compare_outcome;
+    if (number > current_value) {
+        res = HandleCompareMod();
+        compare_outcome = COMPARE_MOD;
+    } else {
+        // Handle Graduate at the root node, as the current node's parent will have to modify its children table
+        compare_outcome = COMPARE_GRADUATE;
+    }
+
+    char friend_name_fifo_path[MAX_FRIEND_NAME_LEN + 5];
+    snprintf(friend_name_fifo_path, MAX_FRIEND_NAME_LEN + 5, "%s.fifo", friend_name);
+    FILE *response_stream = fopen(friend_name_fifo_path, "w");
+    if (response_stream == NULL) {
+        ERR_EXIT("open")
+    }
+    setvbuf(response_stream, NULL, _IONBF, 0);
+    fprintf(response_stream, "%d\n", compare_outcome);
+    fclose(response_stream);
+    return res;
+}
+
+response_t RelayCompare(const char *const friend_name) {
+    for (int i = 0; i < children_size; ++i) {
+        if (strncmp(friend_name, children[i].name, MAX_FRIEND_NAME_LEN) == 0) {
+            children[i].value = (children[i].value * 2) % 99;
+            snprintf(children[i].info, MAX_FRIEND_INFO_LEN, "%s_%02d", children[i].name, children[i].value);
+        }
+        response_t res = Send(&children[i], "Compare %s -1\n", friend_name);
+        if (res > 0) {
+            return RESPONSE_RELAY_OK;
+        }
+    }
+    return RESPONSE_NOT_FOUND;
+}
+
+response_t RootHandleCompare(const char *const friend_name, int number) {
+    // Make FIFOs.
+    char friend_name_fifo_path[MAX_FRIEND_NAME_LEN + 5];
+    snprintf(friend_name_fifo_path, MAX_FRIEND_NAME_LEN + 5, "%s.fifo", friend_name);
+    if (mkfifo(friend_name_fifo_path, S_IRWXU) < 0) {
+        ERR_EXIT("mkfifo");
+    }
+    if (mkfifo("number.fifo", S_IRWXU) < 0) {
+        ERR_EXIT("mkfifo");
+    }
+
+    response_t res = RelayCompare(friend_name);
+    CHECK(res > 0);
+
+    // Open and write to `number.fifo`.
+    FILE *number_stream = fopen("number.fifo", "w");
+    if (number_stream == NULL) {
+        ERR_EXIT("fopen");
+    }
+    setvbuf(number_stream, NULL, _IONBF, 0);
+    fprintf(number_stream, "%d\n", number);
+    fclose(number_stream);
+
+    // Open `<friend_name>.fifo`.
+    FILE *response_stream = fopen(friend_name_fifo_path, "r");
+    if (response_stream == NULL) {
+        ERR_EXIT("fopen");
+    }
+    setvbuf(response_stream, NULL, _IONBF, 0);
+
+    // Expect response. Should block until response can be read. Use this as response mechanism.
+    int compare_outcome;
+    if (fscanf(response_stream, "%d", &compare_outcome) == EOF) {
+        ERR_EXIT("fscanf");
+    }
+    LOG("read from <friend_name>.fifo: compare_outcome=%d", compare_outcome);
+    switch (compare_outcome) {
+        case COMPARE_MOD: {
+            print_compare_gtr(friend_name);
+            break;
+        }
+        case COMPARE_GRADUATE: {
+            response_t res = RelayGraduate(friend_name);
+            CHECK(res > 0);
+            print_compare_leq(friend_name);
+            break;
+        }
+    }
+
+    fclose(response_stream);
+    if (unlink("number.fifo") < 0) {
+        ERR_EXIT("unlink");
+    }
+    if (unlink(friend_name_fifo_path) < 0) {
+        ERR_EXIT("unlink");
+    }
+    return res;
+}
+
 int main(int argc, char *argv[]) {
     // Hi! Welcome to SP Homework 2, I hope you have fun
     if (argc != 2) {
@@ -550,12 +674,31 @@ int main(int argc, char *argv[]) {
                 break;
             }
             case 'C': {
-                char parent_friend_name[MAX_FRIEND_NAME_LEN];
-                scanf("%s", parent_friend_name);
-                if (strncmp(current_name, parent_friend_name, MAX_FRIEND_NAME_LEN) == 0) {
-                    res = HandleCheck(parent_friend_name);
-                } else {
-                    res = RelayCheck(parent_friend_name);
+                switch (cmd[1]) {
+                    case 'h': {  // Check
+                        char parent_friend_name[MAX_FRIEND_NAME_LEN];
+                        scanf("%s", parent_friend_name);
+                        if (strncmp(current_name, parent_friend_name, MAX_FRIEND_NAME_LEN) == 0) {
+                            res = HandleCheck(parent_friend_name);
+                        } else {
+                            res = RelayCheck(parent_friend_name);
+                        }
+                        break;
+                    }
+                    case 'o': {  // Compare
+                        char friend_name[MAX_FRIEND_NAME_LEN];
+                        int number;
+                        scanf("%s %d", friend_name, &number);
+                        if (is_root) {
+                            res = RootHandleCompare(friend_name, number);
+                        } else if (strncmp(current_name, friend_name, MAX_FRIEND_NAME_LEN) == 0) {
+                            respond = 0;
+                            res = HandleCompare(friend_name);
+                        } else {
+                            res = RelayCompare(friend_name);
+                        }
+                        break;
+                    }
                 }
                 break;
             }
@@ -631,6 +774,10 @@ int main(int argc, char *argv[]) {
                 } else {
                     res = RelayAdoptPrint(child_friend_name);
                 }
+                break;
+            }
+            case '%': {
+                res = HandleCompareMod();
                 break;
             }
         }

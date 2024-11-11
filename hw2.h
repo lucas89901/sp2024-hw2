@@ -57,4 +57,7 @@ typedef int adopt_op_t;
 // cmd == "Adopt"
 #define ADOPT_READ 1
 
+#define COMPARE_MOD 0
+#define COMPARE_GRADUATE 1
+
 #endif  // HW2_H_
