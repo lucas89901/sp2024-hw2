@@ -1,8 +1,12 @@
 #ifndef HW2_H_
 #define HW2_H_
 
+#ifndef _GNU_SOURCE
 #define _GNU_SOURCE
+#endif
+
 #include <assert.h>
+#include <stdio.h>
 #include <sys/types.h>
 #include <unistd.h>
 
@@ -10,7 +14,7 @@
 #define PARENT_WRITE_FD 3            // File descriptor for writing to parent
 
 #define MAX_CHILDREN 8
-#define MAX_FIFO_NAME_LEN 9
+#define MAX_FIFO_PATH_LEN MAX_FRIEND_NAME_LEN + 5  // +4 for ".fifo"
 #define MAX_FRIEND_INFO_LEN 12
 #define MAX_FRIEND_NAME_LEN 9
 #define MAX_CMD_LEN 128
@@ -43,19 +47,15 @@ typedef struct {
 typedef int response_t;
 #define RESPONSE_HANDLE_OK 1
 #define RESPONSE_RELAY_OK 2
-// Nothing has been printed.
-#define RESPONSE_RELAY_OK_NO_PRINT 3
+#define RESPONSE_RELAY_OK_NO_PRINT 3  // Nothing has been printed.
 #define RESPONSE_SEARCH_FOUND 4
 #define RESPONSE_SEARCH_NOT_FOUND 5
 #define RESPONSE_EMPTY -1
-// Continue DFS.
-#define RESPONSE_NOT_FOUND -2
+#define RESPONSE_NOT_FOUND -2  // Continue DFS.
 
 typedef int adopt_op_t;
-// cmd == "adopt"
-#define ADOPT_OPEN 0
-// cmd == "Adopt"
-#define ADOPT_READ 1
+#define ADOPT_OPEN 0  // cmd == "adopt"
+#define ADOPT_READ 1  // cmd == "Adopt"
 
 #define COMPARE_MOD 0
 #define COMPARE_GRADUATE 1

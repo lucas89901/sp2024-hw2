@@ -528,8 +528,8 @@ response_t HandleCompare(const char *const friend_name) {
         compare_outcome = COMPARE_GRADUATE;
     }
 
-    char friend_name_fifo_path[MAX_FRIEND_NAME_LEN + 5];
-    snprintf(friend_name_fifo_path, MAX_FRIEND_NAME_LEN + 5, "%s.fifo", friend_name);
+    char friend_name_fifo_path[MAX_FIFO_PATH_LEN];
+    snprintf(friend_name_fifo_path, MAX_FIFO_PATH_LEN, "%s.fifo", friend_name);
     FILE *response_stream = fopen(friend_name_fifo_path, "w");
     if (response_stream == NULL) {
         ERR_EXIT("open")
@@ -556,8 +556,8 @@ response_t RelayCompare(const char *const friend_name) {
 
 response_t RootHandleCompare(const char *const friend_name, int number) {
     // Make FIFOs.
-    char friend_name_fifo_path[MAX_FRIEND_NAME_LEN + 5];
-    snprintf(friend_name_fifo_path, MAX_FRIEND_NAME_LEN + 5, "%s.fifo", friend_name);
+    char friend_name_fifo_path[MAX_FIFO_PATH_LEN];
+    snprintf(friend_name_fifo_path, MAX_FIFO_PATH_LEN, "%s.fifo", friend_name);
     if (mkfifo(friend_name_fifo_path, S_IRWXU) < 0) {
         ERR_EXIT("mkfifo");
     }
